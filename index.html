@@ -3,10 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>0xMerl HQ</title>
+    <title>MyClaw3D</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { overflow: hidden; background: #0a0a0f; }
+
+      /* Scrollbars themed to match MyClaw3D */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(5, 5, 10, 0.9);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(to bottom, #3a3530, #2a2520);
+        border-radius: 999px;
+        border: 1px solid #16120f;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(to bottom, #c8a050, #8a6a30);
+      }
+
+      /* Firefox */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #3a3530 #050509;
+      }
     </style>
   </head>
   <body>

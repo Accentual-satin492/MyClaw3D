@@ -1,15 +1,15 @@
-# 0xMerl HQ 🏢
+# MyClaw3D 🏢
 
-A 3D isometric AI agent headquarters built with React + Three.js. Watch autonomous AI agents work, play, and interact in a fully interactive office environment.
+A 3D isometric AI agent world built with React + Three.js. Watch autonomous AI agents work, play, and interact in a fully interactive environment.
 
-![0xMerl HQ](https://img.shields.io/badge/Built%20with-Three.js-black?style=flat&logo=threedotjs)
+![MyClaw3D](https://img.shields.io/badge/Built%20with-Three.js-black?style=flat&logo=threedotjs)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react)
 ![Solana](https://img.shields.io/badge/Solana-Native-14f195?style=flat)
 
 ## Features
 
 ### 🏗️ Two-Room Office
-- **Main HQ** — 6 desks with live terminal monitors, meeting table, lounge area with couches, server racks
+- **Main Office** — 6 desks with live terminal monitors, meeting table, lounge area with couches, server racks
 - **Sports Room** — Pool/billiard table and ping pong table with animated balls
 
 ### 🤖 6 Autonomous AI Agents

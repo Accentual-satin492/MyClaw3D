@@ -67,6 +67,8 @@ export default function ClawHQ() {
   const labelElemsRef = useRef({});
   const followAgentRef = useRef(null);
   const seatPositionsRef = useRef({});
+  const terminalLogsRef = useRef({});
+  const gymPropsRef = useRef({});
 
   const [activePanel, setActivePanel] = useState("tasks");
   const [panelOpen, setPanelOpen] = useState(true);
@@ -82,7 +84,7 @@ export default function ClawHQ() {
     { from: "Cipher", text: "Market data feed active. Monitoring 47 pairs.", color: hexToCSS(0x00d1ff) },
   ]);
   const [activityLog, setActivityLog] = useState([
-    { time: timeStr(), hl: "CLAW HQ", text: "initialized. 6 agents online." },
+    { time: timeStr(), hl: "MYCLAW3D", text: "initialized. 6 agents online." },
     { time: timeStr(), hl: "Echo", text: "connected to Solana mainnet-beta" },
     { time: timeStr(), hl: "Alpha", text: "loaded Jupiter aggregator routes" },
   ]);
@@ -96,11 +98,663 @@ export default function ClawHQ() {
   const [hqTab, setHqTab] = useState("playbooks");
   const [monitorModal, setMonitorModal] = useState(null);
   const [mapOpen, setMapOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [toolAgent, setToolAgent] = useState("alpha");
+  const [toolName, setToolName] = useState("sessions_list");
+  const [toolAction, setToolAction] = useState("json");
+  const [toolArgsText, setToolArgsText] = useState("{}");
+  const [toolBusy, setToolBusy] = useState(false);
+  const taskAbortRef = useRef({});
+  const [reports, setReports] = useState([]);
+  const [artifacts, setArtifacts] = useState([]);
+  const [obsEvents, setObsEvents] = useState([]);
+  const [obsStatsByAgent, setObsStatsByAgent] = useState(() => {
+    const s = {};
+    AGENTS.forEach(a => {
+      s[a.id] = { calls: 0, errors: 0, timeMs: 0, inTok: 0, outTok: 0 };
+    });
+    return s;
+  });
+  const [obsFilterAgent, setObsFilterAgent] = useState("all");
+  const [obsFilterType, setObsFilterType] = useState("all");
+  const [obsErrorsOnly, setObsErrorsOnly] = useState(false);
+  const [obsShowDetails, setObsShowDetails] = useState(false);
+  const [playbooks, setPlaybooks] = useState([]);
+  const buffsRef = useRef((() => {
+    const m = {};
+    AGENTS.forEach(a => { m[a.id] = {}; });
+    return m;
+  })());
+  const lastActivityFlagsRef = useRef((() => {
+    const m = {};
+    AGENTS.forEach(a => { m[a.id] = { gyming: false, cafe: false, playing: false }; });
+    return m;
+  })());
+  const [buffsTick, setBuffsTick] = useState(0);
+  const [agentSettings, setAgentSettings] = useState({});
+  const [serverHealth, setServerHealth] = useState(null);
+  const [serverHealthMeta, setServerHealthMeta] = useState({ ok: false, ms: null, error: "", at: 0 });
+  const [agentTest, setAgentTest] = useState({});
   const [chatHistories, setChatHistories] = useState(() => {
     const h = {};
     AGENTS.forEach(a => { h[a.id] = []; });
     return h;
   });
+  const chatHistoriesRef = useRef(chatHistories);
+  useEffect(() => { chatHistoriesRef.current = chatHistories; }, [chatHistories]);
+  const [terminalTick, setTerminalTick] = useState(0);
+
+  const approxTokens = useCallback((text) => {
+    if (!text) return 0;
+    const s = typeof text === "string" ? text : JSON.stringify(text);
+    return Math.max(1, Math.ceil(s.length / 4));
+  }, []);
+
+  const sanitizePreview = useCallback((value, maxLen = 900) => {
+    if (value == null) return "";
+    let s = "";
+    try {
+      s = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    } catch {
+      s = String(value);
+    }
+    // Basic redactions for common secret patterns.
+    s = s.replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
+    s = s.replace(/("?(token|apiKey|api_key|authorization|password|secret)"?\s*:\s*)(".*?"|'.*?'|[A-Za-z0-9._-]+)/gi, '$1"[REDACTED]"');
+    if (s.length > maxLen) s = s.slice(0, maxLen) + "\n…";
+    return s;
+  }, []);
+
+  const logObs = useCallback((evt) => {
+    const e = {
+      id: Date.now() + Math.floor(Math.random() * 1000),
+      ts: Date.now(),
+      ...evt,
+    };
+    setObsEvents(prev => [e, ...prev].slice(0, 120));
+    // Best-effort persist to server for History/Playbooks/Inbox wiring.
+    fetch("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(e),
+    }).catch(() => {});
+
+    if (e.agentId) {
+      setObsStatsByAgent(prev => {
+        const cur = prev[e.agentId] || { calls: 0, errors: 0, timeMs: 0, inTok: 0, outTok: 0 };
+        const next = {
+          calls: cur.calls + 1,
+          errors: cur.errors + (e.ok ? 0 : 1),
+          timeMs: cur.timeMs + (Number(e.ms) || 0),
+          inTok: cur.inTok + (Number(e.inTok) || 0),
+          outTok: cur.outTok + (Number(e.outTok) || 0),
+        };
+        return { ...prev, [e.agentId]: next };
+      });
+    }
+  }, []);
+
+  const getActiveBuffs = useCallback((agentId) => {
+    const now = Date.now();
+    const b = buffsRef.current?.[agentId] || {};
+    const active = [];
+    for (const [k, v] of Object.entries(b)) {
+      if (v && typeof v.until === "number" && v.until > now) active.push({ key: k, ...v });
+    }
+    active.sort((a, b) => (b.until || 0) - (a.until || 0));
+    return active;
+  }, []);
+
+  const formatBuffLine = useCallback((agentId) => {
+    const active = getActiveBuffs(agentId);
+    if (!active.length) return "";
+    const names = active.map(x => x.label || x.key).join(", ");
+    return `Active buffs: ${names}.`;
+  }, [getActiveBuffs]);
+
+  const grantBuff = useCallback((agentId, buff) => {
+    const now = Date.now();
+    if (!agentId) return;
+    const next = {
+      ...(buff || {}),
+      until: now + Math.max(5_000, Number(buff?.ms) || 60_000),
+    };
+    const cur = buffsRef.current[agentId] || {};
+    buffsRef.current[agentId] = { ...cur, [buff.key]: next };
+    setBuffsTick(t => t + 1);
+    logObs({
+      type: "buff",
+      agentId,
+      label: `buff gained: ${next.label || buff.key}`,
+      ok: true,
+      ms: 0,
+      inTok: 0,
+      outTok: 0,
+      req: sanitizePreview(next, 600),
+      res: "",
+    });
+
+    if (buff.key === "sports_sync") {
+      // Best-effort: generate a short team sync recap into Inbox.
+      (async () => {
+        try {
+          const r = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              agentName: AGENTS.find(a => a.id === agentId)?.name,
+              agentRole: AGENTS.find(a => a.id === agentId)?.role,
+              intent: "sports_sync",
+              message:
+                "You are currently socializing/playing in the sports room. Produce a short 5-bullet team sync recap: what you're doing, what you learned, and next actions. Keep it tight.",
+              history: [],
+            }),
+          });
+          const json = await r.json().catch(() => null);
+          const text = json?.text || "";
+          await fetch("/api/inbox", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              title: "Team Sync recap (sports room)",
+              body: text || "Sync buff triggered, but recap generation failed.",
+              status: "open",
+            }),
+          });
+        } catch {
+          // ignore
+        }
+      })();
+    }
+  }, [logObs, sanitizePreview]);
+
+  const getTimeoutsForAgent = useCallback((agentId) => {
+    const active = getActiveBuffs(agentId).map(b => b.key);
+    const stamina = active.includes("gym_stamina");
+    const recovery = active.includes("cafe_recovery");
+    return {
+      toolMs: stamina ? 45_000 : 30_000,
+      streamIdleMs: stamina ? 40_000 : (recovery ? 30_000 : 25_000),
+    };
+  }, [getActiveBuffs]);
+
+  const refreshPlaybooks = useCallback(async () => {
+    try {
+      const r = await fetch("/api/playbooks");
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.ok) return;
+      if (Array.isArray(json.playbooks)) setPlaybooks(json.playbooks);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const refreshEvents = useCallback(async () => {
+    try {
+      const r = await fetch("/api/events?limit=200");
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.ok) return;
+      if (Array.isArray(json.events)) setObsEvents(json.events);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const refreshAgentSettings = useCallback(async () => {
+    try {
+      const r = await fetch("/api/agent-settings");
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json?.ok) return;
+      setAgentSettings(json.settings || {});
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const refreshHealth = useCallback(async () => {
+    const t0 = performance.now();
+    try {
+      const r = await fetch("/api/health");
+      const json = await r.json().catch(() => null);
+      const ms = Math.round(performance.now() - t0);
+      if (!r.ok || !json?.ok) {
+        setServerHealthMeta({ ok: false, ms, error: `HTTP ${r.status}`, at: Date.now() });
+        return;
+      }
+      setServerHealth(json);
+      setServerHealthMeta({ ok: true, ms, error: "", at: Date.now() });
+    } catch (e) {
+      const ms = Math.round(performance.now() - t0);
+      setServerHealthMeta({ ok: false, ms, error: e?.message || String(e), at: Date.now() });
+    }
+  }, []);
+
+  const getAgentRoute = useCallback((agentId) => {
+    const s = agentSettings?.[agentId] || {};
+    return {
+      openclawAgentId: (s.openclawAgentId || "").trim() || undefined,
+      model: (s.model || "").trim() || undefined,
+    };
+  }, [agentSettings]);
+
+  // Detect activity starts and grant buffs.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+
+      for (const a of AGENTS) {
+        const id = a.id;
+        const flags = lastActivityFlagsRef.current[id] || { gyming: false, cafe: false, playing: false };
+        const target = agentTargetsRef.current?.[id];
+        const gyming = Boolean(target?.gyming);
+        const cafe = Boolean(target?.cafeSitting);
+        const playing = Boolean(target?.playing);
+
+        if (gyming && !flags.gyming) {
+          grantBuff(id, { key: "gym_stamina", label: "Stamina+", ms: 90_000 });
+          grantBuff(id, { key: "gym_focus", label: "Focus+", ms: 90_000 });
+          changed = true;
+        }
+        if (cafe && !flags.cafe) {
+          grantBuff(id, { key: "cafe_recovery", label: "Recovery+", ms: 60_000 });
+          grantBuff(id, { key: "cafe_creativity", label: "Creativity+", ms: 60_000 });
+          changed = true;
+        }
+        if (playing && !flags.playing) {
+          grantBuff(id, { key: "sports_sync", label: "Team Sync+", ms: 75_000 });
+          changed = true;
+        }
+
+        lastActivityFlagsRef.current[id] = { gyming, cafe, playing };
+      }
+
+      // Expiry tick (for UI refresh)
+      if (changed) setBuffsTick(t => t + 1);
+      // Also periodically tick so “remaining” updates.
+      if (now % 5_000 < 500) setBuffsTick(t => t + 1);
+    }, 500);
+    return () => clearInterval(t);
+  }, [grantBuff]);
+
+  // ===== Runtime activity (must be defined before invokeTool/runTask callbacks) =====
+
+  useEffect(() => {
+    refreshPlaybooks();
+    refreshEvents();
+    refreshAgentSettings();
+    refreshHealth();
+    const t = setInterval(() => {
+      refreshEvents();
+      refreshPlaybooks();
+      refreshHealth();
+    }, 2500);
+    return () => clearInterval(t);
+  }, [refreshEvents, refreshPlaybooks, refreshAgentSettings, refreshHealth]);
+
+  const ensureTerminalAgent = useCallback((agentId) => {
+    if (!terminalLogsRef.current[agentId]) terminalLogsRef.current[agentId] = [];
+  }, []);
+
+  const appendTerminal = useCallback((agentId, text, type = "output") => {
+    ensureTerminalAgent(agentId);
+    const now = new Date();
+    const ts = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
+    terminalLogsRef.current[agentId].push({ text, type, ts });
+    if (terminalLogsRef.current[agentId].length > 400) terminalLogsRef.current[agentId] = terminalLogsRef.current[agentId].slice(-300);
+    setTerminalTick(t => t + 1);
+  }, [ensureTerminalAgent]);
+
+  const cancelTask = useCallback((taskId) => {
+    const ctrl = taskAbortRef.current[taskId];
+    if (ctrl) ctrl.abort();
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "cancelled", endedAt: Date.now() } : t));
+  }, []);
+
+  const promoteTaskToReport = useCallback(async (task) => {
+    const agent = AGENTS.find(a => a.id === task.agentId);
+    const source = (task.result || (task.log || []).join("\n")).trim();
+    if (!source) return;
+    appendTerminal(task.agentId, "REPORT> promoting task output…", "info");
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: task.agentId,
+          agentName: agent?.name,
+          agentRole: agent?.role,
+          intent: "promote_report",
+          message:
+            "Convert the following task output into a concise markdown report with sections: Summary, Key points, Next actions.\n\n" +
+            source,
+          history: [],
+        }),
+      });
+      const json = await r.json().catch(() => null);
+      const text = json?.text;
+      if (!r.ok || typeof text !== "string") {
+        appendTerminal(task.agentId, `REPORT> failed (${r.status})`, "warning");
+        return;
+      }
+      setReports(prev => [{ id: Date.now(), agentId: task.agentId, title: task.desc.slice(0, 64), md: text, createdAt: Date.now() }, ...prev]);
+      appendTerminal(task.agentId, "REPORT> saved to Reports.", "success");
+    } catch (e) {
+      appendTerminal(task.agentId, `REPORT> error: ${e?.message || String(e)}`, "warning");
+    }
+  }, [appendTerminal]);
+
+  const generateFollowupSubtasks = useCallback(async (task) => {
+    const agent = AGENTS.find(a => a.id === task.agentId);
+    const source = (task.result || (task.log || []).join("\n")).trim();
+    if (!source) return;
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: task.agentId,
+          agentName: agent?.name,
+          agentRole: agent?.role,
+          intent: "followup_subtasks",
+          message:
+            "Based on this completed task, propose 1-3 short follow-up tasks. Output ONLY JSON: {\"subtasks\":[{\"desc\":\"...\"}]}.\n\n" +
+            source,
+          history: [],
+        }),
+      });
+      const json = await r.json().catch(() => null);
+      const text = json?.text || "";
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch { parsed = null; }
+      const subs = parsed?.subtasks;
+      if (!Array.isArray(subs) || subs.length === 0) return;
+      const now = Date.now();
+      const newTasks = subs
+        .filter(s => typeof s?.desc === "string" && s.desc.trim().length)
+        .slice(0, 3)
+        .map((s, i) => ({
+          id: now + 10 + i,
+          agent: agent?.name || "Agent",
+          agentId: task.agentId,
+          desc: s.desc.trim(),
+          status: "pending",
+          log: [],
+          result: "",
+          parentId: task.id,
+          createdAt: Date.now(),
+        }));
+      if (newTasks.length) {
+        setTasks(prev => [...newTasks, ...prev]);
+        appendTerminal(task.agentId, `SUBTASKS> queued ${newTasks.length} follow-ups`, "info");
+      }
+    } catch {
+      // ignore follow-up failures (non-critical)
+    }
+  }, [appendTerminal]);
+
+  const saveArtifactFromTask = useCallback((task) => {
+    const content = (task.result || (task.log || []).join("\n")).trim();
+    if (!content) return;
+    const id = Date.now();
+    setArtifacts(prev => [
+      { id, agentId: task.agentId, title: task.desc.slice(0, 64), content, createdAt: Date.now(), pushed: false },
+      ...prev,
+    ]);
+    appendTerminal(task.agentId, "NOTE> saved to File Cabinet.", "info");
+  }, [appendTerminal]);
+
+  const saveArtifactFromReport = useCallback((report) => {
+    const content = (report.md || "").trim();
+    if (!content) return;
+    const id = Date.now();
+    setArtifacts(prev => [
+      { id, agentId: report.agentId, title: report.title, content, createdAt: Date.now(), pushed: false },
+      ...prev,
+    ]);
+  }, []);
+
+  const pushArtifactToMemory = useCallback(async (artifact) => {
+    const agent = AGENTS.find(a => a.id === artifact.agentId);
+    const t0 = performance.now();
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: artifact.agentId,
+          agentName: agent?.name,
+          agentRole: agent?.role,
+          intent: "memory",
+          message:
+            "Store the following note into your long-term memory. Do not echo it back; just acknowledge internally.\n\n" +
+            artifact.content,
+          history: [],
+        }),
+      });
+      if (!r.ok) {
+        appendTerminal(artifact.agentId, `MEMORY> failed (${r.status})`, "warning");
+        logObs({
+          type: "memory",
+          agentId: artifact.agentId,
+          label: "push note to memory",
+          ok: false,
+          status: r.status,
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens(artifact.content),
+          outTok: 0,
+          req: sanitizePreview({ intent: "memory", note: artifact.content }, 700),
+          res: sanitizePreview(`HTTP ${r.status}`, 900),
+        });
+        return;
+      }
+      setArtifacts(prev => prev.map(a => a.id === artifact.id ? { ...a, pushed: true } : a));
+      appendTerminal(artifact.agentId, "MEMORY> note forwarded to OpenClaw.", "success");
+      logObs({
+        type: "memory",
+        agentId: artifact.agentId,
+        label: "push note to memory",
+        ok: true,
+        status: r.status,
+        ms: Math.round(performance.now() - t0),
+        inTok: approxTokens(artifact.content),
+        outTok: 0,
+        req: sanitizePreview({ intent: "memory", note: artifact.content }, 700),
+        res: sanitizePreview("ok", 900),
+      });
+    } catch (e) {
+      appendTerminal(artifact.agentId, `MEMORY> error: ${e?.message || String(e)}`, "warning");
+      logObs({
+        type: "memory",
+        agentId: artifact.agentId,
+        label: "push note to memory",
+        ok: false,
+        error: e?.name === "AbortError" ? "timeout" : (e?.message || String(e)),
+        ms: Math.round(performance.now() - t0),
+        inTok: approxTokens(artifact.content),
+        outTok: 0,
+        req: sanitizePreview({ intent: "memory", note: artifact.content }, 700),
+        res: sanitizePreview(e?.name === "AbortError" ? "timeout" : (e?.message || String(e)), 900),
+      });
+    }
+  }, [appendTerminal, approxTokens, sanitizePreview, logObs]);
+
+  // ===== Runtime activity + desk auto-walk (must be above invokeTool/runTask) =====
+  const agentActivityRef = useRef((() => {
+    const m = {};
+    AGENTS.forEach(a => { m[a.id] = { thinking: 0, tool: 0, errorUntil: 0 }; });
+    return m;
+  })());
+
+  const runtimeToColor = useCallback((runtime) => {
+    if (runtime === "error") return 0xff4d4d;
+    if (runtime === "tool") return 0x9945ff;
+    if (runtime === "thinking") return 0x00d1ff;
+    return 0xffaa22;
+  }, []);
+
+  const computeRuntime = useCallback((st) => {
+    const now = Date.now();
+    if (st.errorUntil && st.errorUntil > now) return "error";
+    if ((st.tool || 0) > 0) return "tool";
+    if ((st.thinking || 0) > 0) return "thinking";
+    return "idle";
+  }, []);
+
+  const applyAgentRuntime = useCallback((agentId) => {
+    const st = agentActivityRef.current?.[agentId] || { thinking: 0, tool: 0, errorUntil: 0 };
+    const runtime = computeRuntime(st);
+    setAgents(prev => prev.map(a => {
+      if (a.id !== agentId) return a;
+      const nextStatus = runtime === "idle" ? "idle" : "working";
+      return { ...a, runtime, status: nextStatus };
+    }));
+    const mesh = agentMeshesRef.current?.[agentId];
+    if (mesh?.userData?.ring?.material) {
+      mesh.userData.ring.material.color.set(runtimeToColor(runtime));
+    }
+  }, [computeRuntime, runtimeToColor]);
+
+  const bumpAgentActivity = useCallback((agentId, patch) => {
+    if (!agentId) return;
+    const cur = agentActivityRef.current[agentId] || { thinking: 0, tool: 0, errorUntil: 0 };
+    const next = {
+      thinking: Math.max(0, (cur.thinking || 0) + (patch.thinking || 0)),
+      tool: Math.max(0, (cur.tool || 0) + (patch.tool || 0)),
+      errorUntil: patch.error ? Math.max(cur.errorUntil || 0, Date.now() + (patch.errorMs || 8000)) : (cur.errorUntil || 0),
+    };
+    agentActivityRef.current[agentId] = next;
+    applyAgentRuntime(agentId);
+  }, [applyAgentRuntime]);
+
+  const commandAgentToDesk = useCallback((agentId) => {
+    const t = agentTargetsRef.current?.[agentId];
+    const m = agentMeshesRef.current?.[agentId];
+    const seat = seatPositionsRef.current?.[agentId];
+    if (!t) return;
+    // Clear activities and head to desk.
+    t.sitting = false; t.goToDesk = true; t.commanded = true;
+    t.sofaSitting = false; t.goToSofa = false; t.sofaSeatIdx = -1;
+    t.cafeSitting = false; t.goToCafe = false; t.cafeSpotIdx = -1; t.cafeTimer = 0;
+    t.gyming = false; t.goToGym = false; t.gymSpotIdx = -1; t.gymTimer = 0; t.gymActivity = "";
+    t.playing = false; t.goToGame = false; t.gameSpotIdx = -1; t.playTimer = 0;
+    if (seat) {
+      t.x = seat.x;
+      t.z = seat.z;
+    }
+    if (m) m.position.y = 0;
+  }, []);
+
+  const invokeTool = useCallback(async () => {
+    const agentId = toolAgent;
+    const agent = AGENTS.find(a => a.id === agentId);
+    let argsObj = {};
+    try {
+      argsObj = toolArgsText.trim() ? JSON.parse(toolArgsText) : {};
+    } catch (e) {
+      const errText = `Tool args JSON error: ${e?.message || String(e)}`;
+      appendTerminal(agentId, errText, "warning");
+      return;
+    }
+
+    setToolBusy(true);
+    appendTerminal(agentId, `TOOL> ${toolName}${toolAction ? ` (${toolAction})` : ""}`, "info");
+    commandAgentToDesk(agentId);
+    bumpAgentActivity(agentId, { tool: 1 });
+    const route = getAgentRoute(agentId);
+    const t0 = performance.now();
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), getTimeoutsForAgent(agentId).toolMs);
+    try {
+      const r = await fetch("/api/tools/invoke", {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId,
+          openclawAgentId: route.openclawAgentId,
+          tool: toolName.trim(),
+          action: toolAction.trim() || undefined,
+          args: argsObj,
+        }),
+      });
+      const json = await r.json().catch(() => null);
+      if (!r.ok || !json) {
+        appendTerminal(agentId, `Tool invoke failed (${r.status}).`, "warning");
+        if (json) appendTerminal(agentId, JSON.stringify(json).slice(0, 1200), "warning");
+        logObs({
+          type: "tool",
+          agentId,
+          label: `${toolName}${toolAction ? ` (${toolAction})` : ""}`,
+          ok: false,
+          status: r.status,
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens({ tool: toolName, action: toolAction, args: argsObj }),
+          outTok: approxTokens(json ? JSON.stringify(json) : ""),
+          req: sanitizePreview({ tool: toolName, action: toolAction, args: argsObj }, 700),
+          res: sanitizePreview(json ? json : `HTTP ${r.status}`, 900),
+        });
+        bumpAgentActivity(agentId, { error: true });
+        return;
+      }
+      if (json.ok) {
+        const out = typeof json.result === "string" ? json.result : JSON.stringify(json.result, null, 2);
+        appendTerminal(agentId, out.slice(0, 4000), "output");
+        setActivityLog(prev => [{ time: timeStr(), hl: agent?.name || "Tool", text: `tool: ${toolName}` }, ...prev].slice(0, 50));
+        logObs({
+          type: "tool",
+          agentId,
+          label: `${toolName}${toolAction ? ` (${toolAction})` : ""}`,
+          ok: true,
+          status: r.status,
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens({ tool: toolName, action: toolAction, args: argsObj }),
+          outTok: approxTokens(out),
+          req: sanitizePreview({ tool: toolName, action: toolAction, args: argsObj }, 700),
+          res: sanitizePreview(out, 900),
+        });
+      } else {
+        appendTerminal(agentId, JSON.stringify(json).slice(0, 2000), "warning");
+        logObs({
+          type: "tool",
+          agentId,
+          label: `${toolName}${toolAction ? ` (${toolAction})` : ""}`,
+          ok: false,
+          status: r.status,
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens({ tool: toolName, action: toolAction, args: argsObj }),
+          outTok: approxTokens(JSON.stringify(json)),
+          req: sanitizePreview({ tool: toolName, action: toolAction, args: argsObj }, 700),
+          res: sanitizePreview(json, 900),
+        });
+        bumpAgentActivity(agentId, { error: true });
+      }
+    } catch (e) {
+      appendTerminal(agentId, `Tool network error: ${e?.message || String(e)}`, "warning");
+      logObs({
+        type: "tool",
+        agentId,
+        label: `${toolName}${toolAction ? ` (${toolAction})` : ""}`,
+        ok: false,
+        error: e?.name === "AbortError" ? "timeout" : (e?.message || String(e)),
+        ms: Math.round(performance.now() - t0),
+        inTok: approxTokens({ tool: toolName, action: toolAction, args: argsObj }),
+        outTok: 0,
+        req: sanitizePreview({ tool: toolName, action: toolAction, args: argsObj }, 700),
+        res: sanitizePreview(e?.name === "AbortError" ? "timeout" : (e?.message || String(e)), 900),
+      });
+      bumpAgentActivity(agentId, { error: true });
+    } finally {
+      clearTimeout(timeout);
+      setToolBusy(false);
+      bumpAgentActivity(agentId, { tool: -1 });
+    }
+  }, [toolAgent, toolName, toolAction, toolArgsText, appendTerminal, approxTokens, sanitizePreview, logObs, commandAgentToDesk, bumpAgentActivity, getTimeoutsForAgent, getAgentRoute]);
 
   const toggleMusic = useCallback(async () => {
     if (musicPlaying) {
@@ -212,6 +866,7 @@ export default function ClawHQ() {
 
     const camera = new THREE.OrthographicCamera(-frustum * aspect, frustum * aspect, frustum, -frustum, -100, 100);
     camera.position.set(20, 20, 20);
+    // Safe initial look target. We'll retarget to the outdoor center after stairs/ground are computed.
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
@@ -228,10 +883,14 @@ export default function ClawHQ() {
     const dirLight = new THREE.DirectionalLight(0xffeedd, 1.0);
     dirLight.position.set(10, 20, 10);
     dirLight.castShadow = true;
-    dirLight.shadow.camera.left = -20;
-    dirLight.shadow.camera.right = 20;
-    dirLight.shadow.camera.top = 20;
-    dirLight.shadow.camera.bottom = -20;
+    // Expand shadow frustum to cover the whole map (office + sports + gym + cafeteria).
+    // The default bounds only cover the main office area, so other rooms won't receive/cast shadows.
+    dirLight.shadow.camera.left = -90;
+    dirLight.shadow.camera.right = 90;
+    dirLight.shadow.camera.top = 90;
+    dirLight.shadow.camera.bottom = -90;
+    dirLight.shadow.camera.near = 0.5;
+    dirLight.shadow.camera.far = 140;
     dirLight.shadow.mapSize.width = 2048;
     dirLight.shadow.mapSize.height = 2048;
     scene.add(dirLight);
@@ -279,9 +938,225 @@ export default function ClawHQ() {
     // Ground outside — top surface meets the last step
     const lastStepY = -(numSteps - 1) * stepDrop; // Y of last step center
     const lastStepZ = 7.3 + (numSteps - 1) * stepDepth + stepDepth / 2; // front edge of last step
-    const outsideGround = new THREE.Mesh(new THREE.BoxGeometry(50, 0.22, 25), mat(0x888880));
+    // Outdoor ground is now a full park (grass base + paths + landscaping)
+    const outsideGround = new THREE.Mesh(new THREE.BoxGeometry(50, 0.22, 25), mat(0x2f6b3a));
     outsideGround.position.set(6, lastStepY, lastStepZ + 12.5);
     outsideGround.receiveShadow = true; scene.add(outsideGround);
+
+    // ===== CITY PARK (dense + beautiful) =====
+    const parkCenter = { x: 15, z: lastStepZ + 12.5 }; // center of outdoor platform
+    const park = new THREE.Group();
+
+    // Deterministic RNG so the park looks stable every reload
+    let seed = 20260316;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+
+    const groundCenter = { x: 6, z: lastStepZ + 12.5 };
+    // Initialize orbit target to the outdoor ground center
+    cameraStateRef.current.target.set(groundCenter.x, 0, groundCenter.z);
+    const halfW = 25;
+    const halfD = 12.5;
+
+    const pathMat = mat(0xb7b09d);
+    const stoneMat = mat(0x666666);
+    const hedgeMat = mat(0x1f6a3a);
+    const woodMat = mat(0x6a4a2a);
+    const metalMat = mat(0x555560);
+
+    // Curved-ish paths using short segments (cheap)
+    const pathY = lastStepY + 0.145;
+    function addPathSegment(x, z, w, d, rot = 0) {
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, d), pathMat);
+      seg.position.set(x, pathY, z);
+      seg.rotation.y = rot;
+      seg.receiveShadow = true;
+      park.add(seg);
+    }
+
+    // Main loop path around the park (rounded rectangle)
+    for (let i = 0; i < 18; i++) {
+      const t = i / 18;
+      const ang = t * Math.PI * 2;
+      const rx = 18.5;
+      const rz = 8.5;
+      const x = groundCenter.x + Math.cos(ang) * rx;
+      const z = groundCenter.z + Math.sin(ang) * rz;
+      const rot = Math.atan2(Math.cos(ang) * rz, -Math.sin(ang) * rx);
+      addPathSegment(x, z, 3.3, 1.3, rot);
+    }
+
+    // Two diagonals for visual richness
+    for (let i = 0; i < 10; i++) {
+      const t = i / 9;
+      addPathSegment(groundCenter.x - 18 + t * 36, groundCenter.z - 6 + t * 12, 3.0, 1.2, Math.PI / 4);
+      addPathSegment(groundCenter.x - 18 + t * 36, groundCenter.z + 6 - t * 12, 3.0, 1.2, -Math.PI / 4);
+    }
+
+    // Dense pond (bigger than the Japanese garden pond)
+    const pondBase = new THREE.Mesh(new THREE.BoxGeometry(18, 0.12, 10.5), stoneMat);
+    pondBase.position.set(parkCenter.x, lastStepY + 0.16, parkCenter.z + 1.6);
+    pondBase.castShadow = true; pondBase.receiveShadow = true;
+    park.add(pondBase);
+    const pondWater = new THREE.Mesh(new THREE.BoxGeometry(17.0, 0.07, 9.6), mat(0x0b2a44, 0x003a66, 0.5));
+    pondWater.position.set(parkCenter.x, lastStepY + 0.2, parkCenter.z + 1.6);
+    pondWater.receiveShadow = true;
+    pondWater.userData.parkWater = true;
+    park.add(pondWater);
+    scene.userData.parkWater = pondWater;
+
+    // A simple footbridge across the pond
+    const bridge = new THREE.Group();
+    const bridgeDeck = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.12, 1.4), woodMat);
+    bridgeDeck.castShadow = true; bridgeDeck.receiveShadow = true;
+    bridgeDeck.position.y = 0.35;
+    bridge.add(bridgeDeck);
+    const railL = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.25, 0.08), woodMat);
+    railL.position.set(0, 0.55, -0.65); railL.castShadow = true; bridge.add(railL);
+    const railR = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.25, 0.08), woodMat);
+    railR.position.set(0, 0.55, 0.65); railR.castShadow = true; bridge.add(railR);
+    bridge.position.set(parkCenter.x, lastStepY + 0.12, parkCenter.z + 1.6);
+    bridge.rotation.y = Math.PI / 2;
+    bridge.userData.parkBridge = true;
+    park.add(bridge);
+    scene.userData.parkBridge = bridge;
+
+    // Hedges (borders + a couple of interior walls)
+    function addHedge(x, z, w, d, rot = 0) {
+      const h = new THREE.Mesh(new THREE.BoxGeometry(w, 0.45, d), hedgeMat);
+      h.position.set(x, lastStepY + 0.27, z);
+      h.rotation.y = rot;
+      h.castShadow = true; h.receiveShadow = true;
+      park.add(h);
+    }
+    // Outer border
+    addHedge(groundCenter.x, groundCenter.z - (halfD - 1.2), 46, 0.55);
+    addHedge(groundCenter.x, groundCenter.z + (halfD - 1.2), 46, 0.55);
+    addHedge(groundCenter.x - (halfW - 1.2), groundCenter.z, 0.55, 22, 0);
+    addHedge(groundCenter.x + (halfW - 1.2), groundCenter.z, 0.55, 22, 0);
+    // Interior hedges
+    addHedge(groundCenter.x - 10, groundCenter.z + 1.5, 14, 0.5, 0.2);
+    addHedge(groundCenter.x - 2, groundCenter.z - 4.0, 12, 0.5, -0.25);
+
+    // Trees (denser)
+    function mkTree(x, z, s = 1) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.11 * s, 0.15 * s, 1.15 * s, 10), mat(0x5a3a22));
+      trunk.position.set(x, lastStepY + 0.58 * s, z);
+      trunk.castShadow = true; trunk.receiveShadow = true;
+      const crown = new THREE.Mesh(new THREE.SphereGeometry(0.7 * s, 14, 14), mat(0x2e7a3f));
+      crown.position.set(x, lastStepY + 1.35 * s, z);
+      crown.castShadow = true; crown.receiveShadow = true;
+      park.add(trunk); park.add(crown);
+    }
+    for (let i = 0; i < 85; i++) {
+      const x = groundCenter.x + (rnd() * 2 - 1) * (halfW - 2.5);
+      const z = groundCenter.z + (rnd() * 2 - 1) * (halfD - 2.0);
+      const nearPond = Math.abs(x - (parkCenter.x + 9.5)) < 10 && Math.abs(z - (parkCenter.z + 1.6)) < 7;
+      const nearEntrance = Math.abs(x - 0) < 3.2 && z < groundCenter.z - 6;
+      if (nearPond || nearEntrance) continue;
+      mkTree(x, z, 0.75 + rnd() * 0.6);
+    }
+
+    // Flowerbeds
+    function mkFlowerBed(x, z, w, d, baseColor = 0x2a2a30) {
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.08, d), mat(baseColor));
+      bed.position.set(x, lastStepY + 0.145, z);
+      bed.receiveShadow = true; park.add(bed);
+      const colors = [0xff6b6b, 0x00d1ff, 0xffaa22, 0x14f195];
+      for (let i = 0; i < 26; i++) {
+        const fx = x + (rnd() * 2 - 1) * (w * 0.44);
+        const fz = z + (rnd() * 2 - 1) * (d * 0.44);
+        const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.08 + rnd() * 0.06, 8, 8), mat(colors[Math.floor(rnd() * colors.length)]));
+        bloom.position.set(fx, lastStepY + 0.22 + rnd() * 0.05, fz);
+        bloom.castShadow = true;
+        park.add(bloom);
+      }
+    }
+    mkFlowerBed(groundCenter.x - 16, groundCenter.z - 7.8, 7.5, 3.2);
+    mkFlowerBed(groundCenter.x + 16, groundCenter.z + 7.8, 7.5, 3.2);
+    mkFlowerBed(groundCenter.x - 16, groundCenter.z + 7.8, 7.5, 3.2);
+
+    // Playground (slide + swings)
+    const playground = new THREE.Group();
+    playground.position.set(groundCenter.x - 14.5, lastStepY + 0.12, groundCenter.z + 4.8);
+    // Slide
+    const slideLadder = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.7), metalMat);
+    slideLadder.position.set(0, 0.55, -0.5); slideLadder.castShadow = true; playground.add(slideLadder);
+    const slide = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.8), mat(0xffaa22));
+    slide.position.set(1.2, 0.65, -0.5);
+    slide.rotation.z = -0.45;
+    slide.castShadow = true; slide.receiveShadow = true;
+    playground.add(slide);
+    // Swings frame
+    const swingTop = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 0.08), metalMat);
+    swingTop.position.set(0.8, 1.35, 1.4); swingTop.castShadow = true; playground.add(swingTop);
+    [[-0.5, 1.4], [2.1, 1.4]].forEach(([sx, sz]) => {
+      const legA = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.4, 0.08), metalMat);
+      legA.position.set(sx, 0.7, sz - 0.35); legA.castShadow = true; playground.add(legA);
+      const legB = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.4, 0.08), metalMat);
+      legB.position.set(sx, 0.7, sz + 0.35); legB.castShadow = true; playground.add(legB);
+    });
+    // Swing seats
+    for (let i = 0; i < 2; i++) {
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.05, 0.25), mat(0x222228));
+      seat.position.set(0.2 + i * 1.2, 0.55, 1.4);
+      seat.castShadow = true; seat.receiveShadow = true;
+      seat.userData.parkSwing = true;
+      seat.userData.swingPhase = rnd() * Math.PI * 2;
+      playground.add(seat);
+    }
+    park.add(playground);
+    scene.userData.parkPlayground = playground;
+
+    // Benches
+    function mkBench(x, z, rot = 0) {
+      const g = new THREE.Group();
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.38), woodMat);
+      seat.position.y = 0.35; seat.castShadow = true; seat.receiveShadow = true; g.add(seat);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.38, 0.08), woodMat);
+      back.position.set(0, 0.58, -0.15); back.castShadow = true; back.receiveShadow = true; g.add(back);
+      [[-0.65, -0.14], [0.65, -0.14], [-0.65, 0.14], [0.65, 0.14]].forEach(([lx, lz]) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.08), metalMat);
+        leg.position.set(lx, 0.17, lz); leg.castShadow = true; g.add(leg);
+      });
+      g.position.set(x, lastStepY + 0.12, z);
+      g.rotation.y = rot;
+      park.add(g);
+    }
+    mkBench(groundCenter.x - 4.0, groundCenter.z - 9.0, 0);
+    mkBench(groundCenter.x + 6.0, groundCenter.z + 9.0, Math.PI);
+    mkBench(parkCenter.x + 2.0, parkCenter.z - 4.5, 0.2);
+
+    // Lamps with glow pools
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffe6a3, transparent: true, opacity: 0.22, depthWrite: false });
+    const lampPools = [];
+    function mkLamp(x, z) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.8, 10), metalMat);
+      pole.position.set(x, lastStepY + 0.9, z);
+      pole.castShadow = true;
+      park.add(pole);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), mat(0x0, 0xffe6a3, 1.15));
+      head.position.set(x, lastStepY + 1.75, z);
+      park.add(head);
+      const pool = new THREE.Mesh(new THREE.CircleGeometry(1.35, 22), glowMat);
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(x, lastStepY + 0.155, z);
+      pool.userData.parkLampPool = true;
+      pool.userData.phase = rnd() * Math.PI * 2;
+      park.add(pool);
+      lampPools.push(pool);
+    }
+    mkLamp(groundCenter.x - 20, groundCenter.z - 7.5);
+    mkLamp(groundCenter.x + 20, groundCenter.z - 7.5);
+    mkLamp(groundCenter.x - 20, groundCenter.z + 7.5);
+    mkLamp(groundCenter.x + 20, groundCenter.z + 7.5);
+    mkLamp(groundCenter.x, groundCenter.z + 9.0);
+    mkLamp(groundCenter.x, groundCenter.z - 9.0);
+
+    scene.userData.parkLampPools = lampPools;
+    scene.add(park);
 
     // ===== STAIRCASE on right side of ground going UP =====
     const groundRightEdge = 6 + 25; // ground center x + half width, no gap
@@ -407,9 +1282,11 @@ export default function ClawHQ() {
       { x: gymX - 2.6, z: gymZ + 4.2 },
       { x: gymX + 0.2, z: gymZ + 4.2 },
     ];
+    const treadmillDecks = [];
     treadmillPads.forEach(({ x, z }) => {
       const deck = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.1, 0.8), mat(0x1e1e26));
       deck.position.set(x, 0.55, z); deck.castShadow = true; scene.add(deck);
+      treadmillDecks.push(deck);
       const railL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), mat(0x666670));
       railL.position.set(x - 0.6, 0.8, z - 0.25); scene.add(railL);
       const railR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), mat(0x666670));
@@ -477,8 +1354,6 @@ export default function ClawHQ() {
     rackTop.position.set(gymX - 0.9, 1.67, gymZ - 1.1); scene.add(rackTop);
     const rackBarbell = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 10), mat(0xb6b6b6));
     rackBarbell.position.set(gymX - 0.9, 1.15, gymZ - 1.1); rackBarbell.rotation.z = Math.PI / 2; scene.add(rackBarbell);
-    const spareBarbell = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.1, 10), mat(0x9c9c9c));
-    spareBarbell.position.set(gymX - 3.3, 0.5, gymZ - 5.4); spareBarbell.rotation.z = Math.PI / 2; scene.add(spareBarbell);
 
     // Trampoline
     const trampoline = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.12, 24), mat(0x1b1b20));
@@ -513,17 +1388,24 @@ export default function ClawHQ() {
       dumbbell.rotation.z = Math.PI / 2;
       dumbbell.position.set(gymX - 3.45 + i * 0.35, 0.72, gymZ - 6.2); scene.add(dumbbell);
     }
-    // One pair of loose dumbbells on floor
-    [-0.2, 0.2].forEach((dx) => {
-      const d = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.42, 10), mat(0x141414));
-      d.rotation.z = Math.PI / 2;
-      d.position.set(gymX + 0.2 + dx, 0.12, gymZ - 4.8);
-      scene.add(d);
-    });
     const bagTop = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.4, 0.05), mat(0x777777));
     bagTop.position.set(gymX - 4.7, 1.3, gymZ - 3.8); scene.add(bagTop);
     const punchBag = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.3, 1.1, 14), mat(0xaa2a2a));
     punchBag.position.set(gymX - 4.7, 0.65, gymZ - 3.8); punchBag.castShadow = true; scene.add(punchBag);
+
+    gymPropsRef.current = {
+      treadmillDecks,
+      ellipticalHandleL,
+      ellipticalHandleR,
+      bikeWheel,
+      chestPressHandleL,
+      chestPressHandleR,
+      benchBarbell: barbell,
+      rackBarbell,
+      trampolineRing,
+      abWheel,
+      punchBag,
+    };
 
     // Gym plants
     mkPlant(gymX + 7, gymZ - 6);
@@ -754,19 +1636,19 @@ export default function ClawHQ() {
     const occupiedCafeSpots = new Set();
 
     const gymSpots = [
-      { x: gymX - 2.6, z: gymZ + 4.2, faceAngle: Math.PI, activity: "treadmill" },
-      { x: gymX + 0.2, z: gymZ + 4.2, faceAngle: Math.PI, activity: "treadmill" },
-      { x: gymX + 3.1, z: gymZ + 4.2, faceAngle: Math.PI, activity: "elliptical" },
-      { x: gymX + 5.5, z: gymZ + 4.3, faceAngle: Math.PI, activity: "bike" },
-      { x: gymX + 5.2, z: gymZ + 1.3, faceAngle: -Math.PI / 2, activity: "chestpress" },
-      { x: gymX - 0.9, z: gymZ - 1.1, faceAngle: 0, activity: "power_rack" },
-      { x: gymX + 1.2, z: gymZ - 0.6, faceAngle: 0, activity: "bench_press" },
-      { x: gymX + 4.5, z: gymZ - 3.3, faceAngle: -Math.PI / 2, activity: "ab_wheel" },
-      { x: gymX - 4.7, z: gymZ - 3.8, faceAngle: Math.PI / 2, activity: "punching_bag" },
-      { x: gymX + 4.5, z: gymZ - 5.8, faceAngle: Math.PI, activity: "kettlebell" },
-      { x: gymX - 2.2, z: gymZ - 6.2, faceAngle: 0, activity: "dumbbell" },
-      { x: gymX - 3.3, z: gymZ - 5.4, faceAngle: 0, activity: "barbell" },
-      { x: gymX + 2.2, z: gymZ - 3.9, faceAngle: 0, activity: "trampoline" },
+      { x: gymX - 2.6, z: gymZ + 4.2, faceAngle: Math.PI, activity: "treadmill", back: 0.95 },
+      { x: gymX + 0.2, z: gymZ + 4.2, faceAngle: Math.PI, activity: "treadmill", back: 0.95 },
+      { x: gymX + 3.1, z: gymZ + 4.2, faceAngle: Math.PI, activity: "elliptical", back: 0.95 },
+      { x: gymX + 5.5, z: gymZ + 4.3, faceAngle: Math.PI / 2, activity: "bike", back: 0.95 },
+      { x: gymX + 5.2, z: gymZ + 1.3, faceAngle: Math.PI / 2, activity: "chestpress", back: 1.05 },
+      { x: gymX - 0.9, z: gymZ - 1.1, faceAngle: Math.PI, activity: "power_rack", back: 1.25 },
+      { x: gymX + 1.2, z: gymZ - 0.6, faceAngle: -Math.PI / 2, activity: "bench_press", back: 0.9, side: -0.35 },
+      { x: gymX + 4.5, z: gymZ - 3.3, faceAngle: -Math.PI / 2, activity: "ab_wheel", back: 0.85 },
+      { x: gymX - 4.7, z: gymZ - 3.8, faceAngle: Math.PI / 2, activity: "punching_bag", back: 0.95 },
+      { x: gymX + 4.5, z: gymZ - 5.8, faceAngle: Math.PI, activity: "kettlebell", back: 0.95 },
+      { x: gymX - 2.2, z: gymZ - 6.2, faceAngle: Math.PI, activity: "dumbbell", back: 1.35, side: 0.25 },
+      { x: gymX - 3.3, z: gymZ - 5.4, faceAngle: Math.PI, activity: "barbell", back: 1.2, side: -0.25 },
+      { x: gymX + 2.2, z: gymZ - 3.9, faceAngle: 0, activity: "trampoline", back: 0.85, side: 0.15 },
     ];
     const occupiedGymSpots = new Set();
 
@@ -933,17 +1815,7 @@ export default function ClawHQ() {
     seatPositionsRef.current = agentSeatPositions;
 
     // Screen update function — draws live terminal-style display
-    const screenLines = {};
-    AGENTS.forEach(a => { screenLines[a.id] = []; });
-
-    const screenMessages = {
-      alpha: ["Scanning Jupiter routes...", "SOL/USDC spread: 0.02%", "Executing swap: 2 SOL", "TX confirmed: 5xK7m...", "P&L: +0.34 SOL", "Checking orderbook depth"],
-      bravo: ["Analyzing yield farms...", "APY comparison running", "Rebalancing portfolio", "Moving 30% to stables", "Risk score: LOW", "DeFi TVL: $4.2B"],
-      cipher: ["Querying on-chain data...", "Parsing 1,247 txns", "Anomaly detected: 0x8f..", "Report generated", "Clustering wallets...", "Data pipeline healthy"],
-      delta: ["Scanning NFT floors...", "Tensor: 12.4 SOL floor", "New collection alert!", "Rarity analysis done", "Listing snipe ready", "Watching 3 collections"],
-      echo: ["TX queue: 3 pending", "Sending 0.5 SOL to 7xQ..", "Confirmed in 400ms", "Gas: 0.000005 SOL", "Batch TX: 5/5 done", "Nonce updated"],
-      flux: ["Market feed active", "SOL: $168.42 (+2.1%)", "Volume spike: RAY/SOL", "Alert: BTC dominance ↓", "Monitoring 47 pairs", "Sentiment: bullish"],
-    };
+    AGENTS.forEach(a => { if (!terminalLogsRef.current[a.id]) terminalLogsRef.current[a.id] = []; });
 
     function updateScreen(agentId, time) {
       const ctx = screenCtxs[agentId];
@@ -994,8 +1866,6 @@ export default function ClawHQ() {
         ctx.fillText("disconnected", 4, 93);
 
         tex.needsUpdate = true;
-        // Clear terminal lines when away
-        screenLines[agentId] = [];
         return;
       }
 
@@ -1017,15 +1887,9 @@ export default function ClawHQ() {
       ctx.font = "6px monospace";
       ctx.fillText("RUN", 88, 9);
 
-      // Terminal lines
-      const msgs = screenMessages[agentId] || ["..."];
-      const lines = screenLines[agentId];
-
-      // Add new line periodically
-      if (Math.floor(time * 0.5) !== Math.floor((time - 0.05) * 0.5)) {
-        lines.push(msgs[Math.floor(Math.random() * msgs.length)]);
-        if (lines.length > 7) lines.shift();
-      }
+      // Terminal lines (real agent output)
+      const term = terminalLogsRef.current[agentId] || [];
+      const lines = term.slice(-7).map(l => l.text);
 
       ctx.fillStyle = "#14f195";
       ctx.font = "7px monospace";
@@ -1038,7 +1902,7 @@ export default function ClawHQ() {
       // Blinking cursor
       if (Math.floor(time * 2) % 2 === 0) {
         ctx.fillStyle = "#14f195";
-        ctx.fillRect(4, 22 + lines.length * 10, 5, 7);
+        ctx.fillRect(4, 22 + Math.min(lines.length, 7) * 10, 5, 7);
       }
 
       // Bottom status bar
@@ -1726,8 +2590,14 @@ export default function ClawHQ() {
         if (target.gyming) {
           const spot = gymSpots[target.gymSpotIdx];
           if (spot) {
-            mesh.position.x = spot.x;
-            mesh.position.z = spot.z;
+            const back = typeof spot.back === "number" ? spot.back : 1.0;
+            const sx = spot.x - Math.sin(spot.faceAngle) * back;
+            const sz = spot.z - Math.cos(spot.faceAngle) * back;
+            const side = typeof spot.side === "number" ? spot.side : 0;
+            const rx = Math.cos(spot.faceAngle);
+            const rz = -Math.sin(spot.faceAngle);
+            mesh.position.x = sx + rx * side;
+            mesh.position.z = sz + rz * side;
             mesh.rotation.y = spot.faceAngle;
             target.gymPhase += dt * 6;
             const p = target.gymPhase;
@@ -1826,8 +2696,16 @@ export default function ClawHQ() {
         if (target.goToGym) {
           const spot = gymSpots[target.gymSpotIdx];
           if (spot) {
-            const dx = spot.x - mesh.position.x;
-            const dz = spot.z - mesh.position.z;
+            const back = typeof spot.back === "number" ? spot.back : 1.0;
+            const sx = spot.x - Math.sin(spot.faceAngle) * back;
+            const sz = spot.z - Math.cos(spot.faceAngle) * back;
+            const side = typeof spot.side === "number" ? spot.side : 0;
+            const rx = Math.cos(spot.faceAngle);
+            const rz = -Math.sin(spot.faceAngle);
+            const tx = sx + rx * side;
+            const tz = sz + rz * side;
+            const dx = tx - mesh.position.x;
+            const dz = tz - mesh.position.z;
             const dist = Math.sqrt(dx * dx + dz * dz);
             if (dist < 0.3) {
               target.gyming = true;
@@ -2212,7 +3090,7 @@ export default function ClawHQ() {
       updateCam();
 
       // Update label positions via direct DOM manipulation
-      AGENTS.forEach(a => {
+      agentsRef.current.forEach(a => {
         const mesh = agentMeshesRef.current[a.id];
         if (!mesh) return;
         let el = labelElemsRef.current[a.id];
@@ -2221,7 +3099,9 @@ export default function ClawHQ() {
           el.style.cssText = `position:absolute;pointer-events:none;padding:3px 8px;background:rgba(10,10,15,0.85);border:1px solid ${hexToCSS(a.color)}40;border-radius:4px;font-family:'Courier New',monospace;font-size:10px;font-weight:600;color:#e0e0e8;display:flex;align-items:center;gap:4px;white-space:nowrap;transform:translate(-50%,-100%);will-change:left,top;`;
           const dot = document.createElement("span");
           dot.className = "status-dot";
-          dot.style.cssText = `width:6px;height:6px;border-radius:50%;background:${a.status === "working" ? "#14f195" : "#ffaa22"};flex-shrink:0;`;
+          const rt = a.runtime || (a.status === "working" ? "thinking" : "idle");
+          const dotColor = rt === "error" ? "#ff4d4d" : rt === "tool" ? "#9945ff" : rt === "thinking" ? "#00d1ff" : "#ffaa22";
+          dot.style.cssText = `width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0;`;
           el.appendChild(dot);
           el.appendChild(document.createTextNode(a.name));
           labelContainerRef.current.appendChild(el);
@@ -2236,8 +3116,9 @@ export default function ClawHQ() {
           el.style.top = y + "px";
           // Update status dot color
           const dot = el.querySelector(".status-dot");
-          const status = agentsRef.current.find(ag => ag.id === a.id)?.status || "idle";
-          if (dot) dot.style.background = status === "working" ? "#14f195" : "#ffaa22";
+          const rt = agentsRef.current.find(ag => ag.id === a.id)?.runtime || "idle";
+          const dotColor = rt === "error" ? "#ff4d4d" : rt === "tool" ? "#9945ff" : rt === "thinking" ? "#00d1ff" : "#ffaa22";
+          if (dot) dot.style.background = dotColor;
         }
       });
 
@@ -2248,24 +3129,37 @@ export default function ClawHQ() {
       // Update wall trading charts
       updateWallScreens(elapsed);
 
-      // Cafeteria ambient animations
-      steamPuffs.forEach((puff) => {
-        const pu = puff.userData;
-        pu.rise += dt * pu.speed;
-        if (pu.rise > 1.1) pu.rise = 0;
-        puff.position.x = pu.baseX + Math.sin(elapsed * 2.2 + pu.sway) * 0.06;
-        puff.position.z = pu.baseZ + Math.cos(elapsed * 1.8 + pu.sway) * 0.05;
-        puff.position.y = pu.baseY + pu.rise * 0.9;
-        const s = 0.65 + pu.rise * 1.4;
-        puff.scale.setScalar(s);
-        puff.material.opacity = Math.max(0, 0.34 - pu.rise * 0.26);
-      });
-      machineLight.material.emissiveIntensity = 1 + (Math.sin(elapsed * 4.5) * 0.35 + 0.35);
-      fridgeCoolGlow.material.emissiveIntensity = 0.45 + (Math.sin(elapsed * 2) * 0.25 + 0.25);
-      fridgeLeds.forEach((led, idx) => {
-        const pulse = Math.sin(elapsed * (3.2 + idx * 0.8) + led.userData.phase);
-        led.material.emissiveIntensity = 0.4 + Math.max(0, pulse) * 1.2;
-      });
+      // Cafeteria ambient animations — only when someone is actually in the cafeteria
+      const cafeActive = Object.values(agentTargetsRef.current).some(t => t.cafeSitting);
+      if (cafeActive) {
+        steamPuffs.forEach((puff) => {
+          const pu = puff.userData;
+          pu.rise += dt * pu.speed;
+          if (pu.rise > 1.1) pu.rise = 0;
+          puff.position.x = pu.baseX + Math.sin(elapsed * 2.2 + pu.sway) * 0.06;
+          puff.position.z = pu.baseZ + Math.cos(elapsed * 1.8 + pu.sway) * 0.05;
+          puff.position.y = pu.baseY + pu.rise * 0.9;
+          const s = 0.65 + pu.rise * 1.4;
+          puff.scale.setScalar(s);
+          puff.material.opacity = Math.max(0, 0.34 - pu.rise * 0.26);
+        });
+        machineLight.material.emissiveIntensity = 1 + (Math.sin(elapsed * 4.5) * 0.35 + 0.35);
+        fridgeCoolGlow.material.emissiveIntensity = 0.45 + (Math.sin(elapsed * 2) * 0.25 + 0.25);
+        fridgeLeds.forEach((led, idx) => {
+          const pulse = Math.sin(elapsed * (3.2 + idx * 0.8) + led.userData.phase);
+          led.material.emissiveIntensity = 0.4 + Math.max(0, pulse) * 1.2;
+        });
+      } else {
+        // Freeze/quiet visuals when inactive (no drifting steam, no pulsing LEDs).
+        steamPuffs.forEach((puff) => {
+          puff.material.opacity = 0;
+        });
+        machineLight.material.emissiveIntensity = 0.2;
+        fridgeCoolGlow.material.emissiveIntensity = 0.2;
+        fridgeLeds.forEach((led) => {
+          led.material.emissiveIntensity = 0.0;
+        });
+      }
 
       // Animate game balls — only when both players are at the table
       let ppPlayingCount = 0;
@@ -2279,6 +3173,77 @@ export default function ClawHQ() {
       });
       const ppActive = ppPlayingCount >= 2;
       const bilActive = bilPlayingCount >= 2;
+
+      // Gym prop animations — only when the matching activity is active
+      const activeGymActivities = new Set();
+      Object.values(agentTargetsRef.current).forEach(t => {
+        if (t.gyming && t.gymSpotIdx >= 0) {
+          const spot = gymSpots[t.gymSpotIdx];
+          if (spot?.activity) activeGymActivities.add(spot.activity);
+        }
+      });
+
+      const gp = gymPropsRef.current || {};
+      // treadmill decks "vibrate"/pulse
+      if (Array.isArray(gp.treadmillDecks)) {
+        const on = activeGymActivities.has("treadmill");
+        gp.treadmillDecks.forEach((d, i) => {
+          d.position.y = 0.55 + (on ? Math.sin(elapsed * 18 + i) * 0.01 : 0);
+        });
+      }
+      // elliptical handles swing
+      if (gp.ellipticalHandleL && gp.ellipticalHandleR) {
+        const on = activeGymActivities.has("elliptical");
+        const swing = on ? Math.sin(elapsed * 6) * 0.35 : 0;
+        gp.ellipticalHandleL.rotation.x = swing;
+        gp.ellipticalHandleR.rotation.x = -swing;
+      }
+      // bike wheel spin
+      if (gp.bikeWheel) {
+        const on = activeGymActivities.has("bike");
+        gp.bikeWheel.rotation.y = on ? (elapsed * 10) % (Math.PI * 2) : 0;
+      }
+      // chest press handles pump
+      if (gp.chestPressHandleL && gp.chestPressHandleR) {
+        const on = activeGymActivities.has("chestpress");
+        const pump = on ? Math.max(0, Math.sin(elapsed * 5)) * 0.18 : 0;
+        gp.chestPressHandleL.position.x = (gp.chestPressHandleL.userData.baseX ?? gp.chestPressHandleL.position.x);
+        gp.chestPressHandleR.position.x = (gp.chestPressHandleR.userData.baseX ?? gp.chestPressHandleR.position.x);
+        if (gp.chestPressHandleL.userData.baseX == null) gp.chestPressHandleL.userData.baseX = gp.chestPressHandleL.position.x;
+        if (gp.chestPressHandleR.userData.baseX == null) gp.chestPressHandleR.userData.baseX = gp.chestPressHandleR.position.x;
+        gp.chestPressHandleL.position.x = gp.chestPressHandleL.userData.baseX - pump;
+        gp.chestPressHandleR.position.x = gp.chestPressHandleR.userData.baseX - pump;
+      }
+      // bench press barbell bounce
+      if (gp.benchBarbell) {
+        const on = activeGymActivities.has("bench_press");
+        gp.benchBarbell.position.y = (gp.benchBarbell.userData.baseY ?? gp.benchBarbell.position.y);
+        if (gp.benchBarbell.userData.baseY == null) gp.benchBarbell.userData.baseY = gp.benchBarbell.position.y;
+        gp.benchBarbell.position.y = gp.benchBarbell.userData.baseY + (on ? Math.max(0, Math.sin(elapsed * 5)) * 0.12 : 0);
+      }
+      // power rack barbell wobble
+      if (gp.rackBarbell) {
+        const on = activeGymActivities.has("power_rack");
+        gp.rackBarbell.rotation.x = on ? Math.sin(elapsed * 7) * 0.08 : 0;
+      }
+      // spareBarbell removed (was clutter / looked like floating bar)
+      // trampoline ring bounce
+      if (gp.trampolineRing) {
+        const on = activeGymActivities.has("trampoline");
+        gp.trampolineRing.position.y = (gp.trampolineRing.userData.baseY ?? gp.trampolineRing.position.y);
+        if (gp.trampolineRing.userData.baseY == null) gp.trampolineRing.userData.baseY = gp.trampolineRing.position.y;
+        gp.trampolineRing.position.y = gp.trampolineRing.userData.baseY + (on ? Math.abs(Math.sin(elapsed * 6)) * 0.12 : 0);
+      }
+      // ab wheel spin
+      if (gp.abWheel) {
+        const on = activeGymActivities.has("ab_wheel");
+        gp.abWheel.rotation.x = on ? (elapsed * 12) % (Math.PI * 2) : 0;
+      }
+      // punching bag sway
+      if (gp.punchBag) {
+        const on = activeGymActivities.has("punching_bag");
+        gp.punchBag.rotation.z = on ? Math.sin(elapsed * 5) * 0.18 : 0;
+      }
 
       // Ping pong ball — bounces back and forth across the table
       ppBall.visible = ppActive;
@@ -2310,6 +3275,27 @@ export default function ClawHQ() {
           ball.rotation.z += dt * (i + 1) * 0.3;
         }
       });
+
+      // Park water animation (cheap: references stored on the scene)
+      if (scene.userData.parkWater) {
+        scene.userData.parkWater.material.emissiveIntensity = 0.25 + (Math.sin(elapsed * 2.2) * 0.1 + 0.1);
+      }
+      // Lamp glow pools flicker slightly
+      if (scene.userData.parkLampPools) {
+        scene.userData.parkLampPools.forEach((pool) => {
+          const phase = pool.userData.phase || 0;
+          pool.material.opacity = 0.18 + (Math.sin(elapsed * 2.6 + phase) * 0.05 + 0.05);
+        });
+      }
+      // Playground swing motion
+      if (scene.userData.parkPlayground) {
+        scene.userData.parkPlayground.children.forEach((c) => {
+          if (c?.userData?.parkSwing) {
+            const ph = c.userData.swingPhase || 0;
+            c.rotation.x = Math.sin(elapsed * 2.2 + ph) * 0.35;
+          }
+        });
+      }
 
       renderer.render(scene, camera);
     }
@@ -2463,25 +3449,191 @@ export default function ClawHQ() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatLog]);
 
-  const assignTask = useCallback(() => {
-    if (!taskInput.trim()) return;
-    const agentId = taskAgent || AGENTS[Math.floor(Math.random() * AGENTS.length)].id;
+  const runTask = useCallback(async ({ agentId, desc, parentId, retryOf }) => {
     const agent = agents.find(a => a.id === agentId) || agents[0];
-    const task = { id: Date.now(), agent: agent.name, agentId, desc: taskInput, status: "pending" };
+    const taskId = Date.now() + Math.floor(Math.random() * 1000);
+    const task = {
+      id: taskId,
+      agent: agent.name,
+      agentId,
+      desc,
+      status: "running",
+      log: [],
+      result: "",
+      parentId,
+      retryOf,
+      createdAt: Date.now(),
+    };
     setTasks(prev => [task, ...prev]);
-    setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: `assigned: ${taskInput}` }, ...prev]);
+    setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: `task started: ${desc}` }, ...prev]);
+    appendTerminal(agentId, `TASK> ${desc}`, "info");
+    commandAgentToDesk(agentId);
+    bumpAgentActivity(agentId, { thinking: 1 });
+    const route = getAgentRoute(agentId);
+
+    const ctrl = new AbortController();
+    taskAbortRef.current[taskId] = ctrl;
+    const t0 = performance.now();
+    let lastChunkAt = Date.now();
+    const idleTimer = setInterval(() => {
+      if (Date.now() - lastChunkAt > getTimeoutsForAgent(agentId).streamIdleMs) ctrl.abort();
+    }, 2_500);
+
+    try {
+      const r = await fetch("/api/chat/stream", {
+        method: "POST",
+        signal: ctrl.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId,
+          agentName: agent.name,
+          agentRole: agent.role,
+          intent: "task",
+          openclawAgentId: route.openclawAgentId,
+          model: route.model,
+          message:
+            `You have been assigned a task. Provide a short execution plan and the result/output.\n` +
+            (formatBuffLine(agentId) ? `\n${formatBuffLine(agentId)}\n` : "\n") +
+            `\nTask: ${desc}`,
+          history: [],
+        }),
+      });
+
+      if (!r.ok || !r.body) {
+        const t = await r.text().catch(() => "");
+        const errText = `Task failed (${r.status}). ${t || ""}`.trim();
+        setTasks(prev => prev.map(tt => tt.id === taskId ? { ...tt, status: "failed", endedAt: Date.now(), error: errText } : tt));
+        setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: errText }, ...prev]);
+        appendTerminal(agentId, errText, "warning");
+        logObs({
+          type: "task",
+          agentId,
+          label: desc,
+          ok: false,
+          status: r.status,
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens(desc),
+          outTok: approxTokens(t || errText),
+          req: sanitizePreview({ intent: "task", message: desc }, 700),
+          res: sanitizePreview(t || errText, 900),
+        });
+        bumpAgentActivity(agentId, { error: true });
+        return;
+      }
+
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let acc = "";
+      let lastFlushLen = 0;
+
+      const flush = (force = false) => {
+        const delta = acc.slice(lastFlushLen);
+        if (!delta) return;
+        if (!force && delta.length < 80 && !delta.includes("\n")) return;
+        lastFlushLen = acc.length;
+        const chunk = delta.replace(/\\s+/g, " ").trim();
+        appendTerminal(agentId, chunk, "output");
+        setTasks(prev => prev.map(tt => {
+          if (tt.id !== taskId) return tt;
+          const nextLog = [...(tt.log || []), chunk].slice(-200);
+          return { ...tt, log: nextLog };
+        }));
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        lastChunkAt = Date.now();
+        let idx;
+        while ((idx = buf.indexOf("\\n\\n")) !== -1) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          const lines = frame.split("\\n").map(l => l.trimEnd());
+          for (const line of lines) {
+            if (!line.startsWith("data:")) continue;
+            const data = line.slice(5).trim();
+            if (!data || data === "[DONE]") continue;
+            let parsed;
+            try { parsed = JSON.parse(data); } catch { parsed = null; }
+            const delta = parsed?.choices?.[0]?.delta?.content;
+            if (typeof delta === "string" && delta.length) {
+              acc += delta;
+              flush(false);
+            }
+          }
+        }
+      }
+
+      flush(true);
+      const final = acc.trim();
+      setTasks(prev => prev.map(tt => tt.id === taskId ? { ...tt, status: "done", result: final, endedAt: Date.now() } : tt));
+      setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: `task completed: ${desc}` }, ...prev]);
+      appendTerminal(agentId, `DONE> ${desc}`, "success");
+
+      logObs({
+        type: "task",
+        agentId,
+        label: desc,
+        ok: true,
+        status: 200,
+        ms: Math.round(performance.now() - t0),
+        inTok: approxTokens(desc),
+        outTok: approxTokens(final),
+        req: sanitizePreview({ intent: "task", message: desc }, 700),
+        res: sanitizePreview(final, 900),
+      });
+      generateFollowupSubtasks({ ...task, result: final, log: [] });
+    } catch (e) {
+      if (e?.name === "AbortError") {
+        appendTerminal(agentId, "TASK> cancelled", "warning");
+        logObs({
+          type: "task",
+          agentId,
+          label: desc,
+          ok: false,
+          error: "timeout_or_cancelled",
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens(desc),
+          outTok: 0,
+          req: sanitizePreview({ intent: "task", message: desc }, 700),
+          res: sanitizePreview("timeout_or_cancelled", 900),
+        });
+        bumpAgentActivity(agentId, { error: true });
+        return;
+      }
+      const errText = `Task network error: ${e?.message || String(e)}`;
+      setTasks(prev => prev.map(tt => tt.id === taskId ? { ...tt, status: "failed", endedAt: Date.now(), error: errText } : tt));
+      setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: errText }, ...prev]);
+      appendTerminal(agentId, errText, "warning");
+      logObs({
+        type: "task",
+        agentId,
+        label: desc,
+        ok: false,
+        error: e?.message || String(e),
+        ms: Math.round(performance.now() - t0),
+        inTok: approxTokens(desc),
+        outTok: 0,
+        req: sanitizePreview({ intent: "task", message: desc }, 700),
+        res: sanitizePreview(e?.message || String(e), 900),
+      });
+      bumpAgentActivity(agentId, { error: true });
+    } finally {
+      clearInterval(idleTimer);
+      delete taskAbortRef.current[taskId];
+      bumpAgentActivity(agentId, { thinking: -1 });
+    }
+  }, [agents, appendTerminal, generateFollowupSubtasks, approxTokens, sanitizePreview, logObs, commandAgentToDesk, bumpAgentActivity, getTimeoutsForAgent, formatBuffLine, getAgentRoute]);
+
+  const assignTask = useCallback(async () => {
+    const desc = taskInput.trim();
+    if (!desc) return;
+    const agentId = taskAgent || AGENTS[Math.floor(Math.random() * AGENTS.length)].id;
     setTaskInput("");
-
-    setTimeout(() => {
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: "running" } : t));
-      setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: "started executing task" }, ...prev]);
-    }, 1000);
-
-    setTimeout(() => {
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: "done" } : t));
-      setActivityLog(prev => [{ time: timeStr(), hl: agent.name, text: `completed: ${taskInput}` }, ...prev]);
-    }, 4000 + Math.random() * 3000);
-  }, [taskInput, taskAgent, agents]);
+    await runTask({ agentId, desc });
+  }, [taskInput, taskAgent, runTask]);
 
   const sendChat = useCallback(() => {
     if (!chatInput.trim()) return;
@@ -2498,7 +3650,7 @@ export default function ClawHQ() {
   const chatMsgEndRef = useRef(null);
   useEffect(() => { chatMsgEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatHistories, chatAgent]);
 
-  const sendAgentChat = useCallback(() => {
+  const sendAgentChat = useCallback(async () => {
     if (!chatInput.trim()) return;
     const msg = chatInput;
     setChatInput("");
@@ -2718,16 +3870,169 @@ export default function ClawHQ() {
         }));
       }, 600);
     } else {
-      // Normal chat response
-      setTimeout(() => {
-        const resp = CHAT_RESPONSES[Math.floor(Math.random() * CHAT_RESPONSES.length)];
+      // Real agent chat via OpenClaw (streamed)
+      const replyId = Date.now();
+      setChatHistories(prev => ({
+        ...prev,
+        [chatAgent]: [...(prev[chatAgent] || []), { id: replyId, from: agent?.name || "Agent", text: "", time: timeStr(), streaming: true }]
+      }));
+
+      appendTerminal(chatAgent, `USER> ${msg}`, "info");
+      commandAgentToDesk(chatAgent);
+      bumpAgentActivity(chatAgent, { thinking: 1 });
+      const route = getAgentRoute(chatAgent);
+
+      const history = (chatHistoriesRef.current?.[chatAgent] || [])
+        .slice(-12)
+        .filter(m => typeof m?.text === "string" && m.text.trim().length)
+        .map(m => ({
+          role: m.from === "You" ? "user" : "assistant",
+          content: m.text
+        }));
+
+      const t0 = performance.now();
+      const ctrl = new AbortController();
+      let lastChunkAt = Date.now();
+      const idleTimer = setInterval(() => {
+        if (Date.now() - lastChunkAt > getTimeoutsForAgent(chatAgent).streamIdleMs) ctrl.abort();
+      }, 2_500);
+      try {
+        const r = await fetch("/api/chat/stream", {
+          method: "POST",
+          signal: ctrl.signal,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId: chatAgent,
+            agentName: agent?.name,
+            agentRole: agent?.role,
+            intent: "chat",
+            openclawAgentId: route.openclawAgentId,
+            model: route.model,
+            message: formatBuffLine(chatAgent) ? `${formatBuffLine(chatAgent)}\n\n${msg}` : msg,
+            history
+          }),
+        });
+
+        if (!r.ok || !r.body) {
+          const t = await r.text().catch(() => "");
+          const errText = `Gateway error (${r.status}). ${t || ""}`.trim();
+          setChatHistories(prev => ({
+            ...prev,
+            [chatAgent]: (prev[chatAgent] || []).map(m => m.id === replyId ? { ...m, text: errText, streaming: false } : m)
+          }));
+          appendTerminal(chatAgent, errText, "warning");
+          logObs({
+            type: "chat",
+            agentId: chatAgent,
+            label: "chat",
+            ok: false,
+            status: r.status,
+            ms: Math.round(performance.now() - t0),
+            inTok: approxTokens(msg),
+            outTok: approxTokens(t || errText),
+            req: sanitizePreview({ intent: "chat", message: msg }, 700),
+            res: sanitizePreview(t || errText, 900),
+          });
+          bumpAgentActivity(chatAgent, { error: true });
+          return;
+        }
+
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let acc = "";
+        let lastFlushLen = 0;
+
+        const flushTerminal = (force = false) => {
+          const delta = acc.slice(lastFlushLen);
+          if (!delta) return;
+          if (!force && delta.length < 40 && !delta.includes("\n")) return;
+          lastFlushLen = acc.length;
+          appendTerminal(chatAgent, delta.replace(/\s+/g, " ").trim(), "output");
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          lastChunkAt = Date.now();
+
+          let idx;
+          while ((idx = buf.indexOf("\n\n")) !== -1) {
+            const frame = buf.slice(0, idx);
+            buf = buf.slice(idx + 2);
+
+            const lines = frame.split("\n").map(l => l.trimEnd());
+            for (const line of lines) {
+              if (!line.startsWith("data:")) continue;
+              const data = line.slice(5).trim();
+              if (!data) continue;
+              if (data === "[DONE]") {
+                flushTerminal(true);
+                setChatHistories(prev => ({
+                  ...prev,
+                  [chatAgent]: (prev[chatAgent] || []).map(m => m.id === replyId ? { ...m, streaming: false } : m)
+                }));
+                break;
+              }
+              let parsed;
+              try { parsed = JSON.parse(data); } catch { parsed = null; }
+              const delta = parsed?.choices?.[0]?.delta?.content;
+              if (typeof delta === "string" && delta.length) {
+                acc += delta;
+                setChatHistories(prev => ({
+                  ...prev,
+                  [chatAgent]: (prev[chatAgent] || []).map(m => m.id === replyId ? { ...m, text: acc } : m)
+                }));
+                flushTerminal(false);
+              }
+            }
+          }
+        }
+
+        flushTerminal(true);
         setChatHistories(prev => ({
           ...prev,
-          [chatAgent]: [...(prev[chatAgent] || []), { from: agent?.name || "Agent", text: resp, time: timeStr() }]
+          [chatAgent]: (prev[chatAgent] || []).map(m => m.id === replyId ? { ...m, text: acc, streaming: false } : m)
         }));
-      }, 800 + Math.random() * 1500);
+        logObs({
+          type: "chat",
+          agentId: chatAgent,
+          label: "chat",
+          ok: true,
+          status: 200,
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens(msg),
+          outTok: approxTokens(acc),
+          req: sanitizePreview({ intent: "chat", message: msg }, 700),
+          res: sanitizePreview(acc, 900),
+        });
+      } catch (e) {
+        const errText = `Network error: ${e?.message || String(e)}`;
+        setChatHistories(prev => ({
+          ...prev,
+          [chatAgent]: (prev[chatAgent] || []).map(m => m.id === replyId ? { ...m, text: errText, streaming: false } : m)
+        }));
+        appendTerminal(chatAgent, errText, "warning");
+        logObs({
+          type: "chat",
+          agentId: chatAgent,
+          label: "chat",
+          ok: false,
+          error: e?.name === "AbortError" ? "timeout" : (e?.message || String(e)),
+          ms: Math.round(performance.now() - t0),
+          inTok: approxTokens(msg),
+          outTok: 0,
+          req: sanitizePreview({ intent: "chat", message: msg }, 700),
+          res: sanitizePreview(e?.name === "AbortError" ? "timeout" : (e?.message || String(e)), 900),
+        });
+        bumpAgentActivity(chatAgent, { error: true });
+      } finally {
+        clearInterval(idleTimer);
+        bumpAgentActivity(chatAgent, { thinking: -1 });
+      }
     }
-  }, [chatInput, chatAgent]);
+  }, [chatInput, chatAgent, appendTerminal, approxTokens, sanitizePreview, logObs, commandAgentToDesk, bumpAgentActivity, getTimeoutsForAgent, formatBuffLine, getAgentRoute]);
 
 
   return (
@@ -2743,7 +4048,13 @@ export default function ClawHQ() {
         display: "flex", alignItems: "center", gap: 6, padding: "8px 14px"
       }}>
         {/* Reset/overview angle */}
-        <div onClick={() => { followAgentRef.current = null; setSelectedAgent(null); cameraStateRef.current.angle = Math.PI / 4; cameraStateRef.current.distance = 25; cameraStateRef.current.target.set(0, 0, 0); }} style={{
+        <div onClick={() => {
+          followAgentRef.current = null;
+          setSelectedAgent(null);
+          cameraStateRef.current.angle = Math.PI / 4;
+          cameraStateRef.current.distance = 25;
+          cameraStateRef.current.target.set(6, 0, 7.3 + (6 - 1) * 0.6 + 0.6 / 2 + 12.5);
+        }} style={{
           width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
           borderRadius: 8, border: "1px solid #3a3530", cursor: "pointer"
         }}>
@@ -2783,7 +4094,7 @@ export default function ClawHQ() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%" }}>
           <div style={{ flex: 1, height: 1, background: "linear-gradient(to right, transparent, #c8a050)" }} />
           <span style={{ fontFamily: "'Courier New', monospace", fontWeight: 600, fontSize: 13, letterSpacing: 6, color: "#c8a050" }}>
-            0xMerl HEADQUARTERS
+            MYCLAW3D
           </span>
           <div style={{ flex: 1, height: 1, background: "linear-gradient(to left, transparent, #c8a050)" }} />
         </div>
@@ -2812,10 +4123,35 @@ export default function ClawHQ() {
                 boxShadow: `0 0 6px ${hexToCSS(a.color)}60`
               }} />
               <span style={{ fontSize: 11, fontWeight: 500, color: "#d4c5a0", fontFamily: "'Courier New', monospace" }}>{a.name}</span>
-              <div style={{ display: "flex", gap: 5, marginLeft: 2 }}>
-                <span style={{ fontSize: 9, color: "#5a5545", cursor: "pointer" }}>👁</span>
-                <span style={{ fontSize: 9, color: "#5a5545", cursor: "pointer" }}>💬</span>
-              </div>
+              {(() => {
+                const active = getActiveBuffs(a.id);
+                if (!active.length) return null;
+                return (
+                  <span style={{ display: "flex", gap: 4, marginLeft: 4 }}>
+                    {active.slice(0, 2).map(b => (
+                      <span key={b.key} style={{
+                        fontSize: 8, fontWeight: 900, letterSpacing: 0.8,
+                        padding: "2px 6px", borderRadius: 999,
+                        border: "1px solid #2a2520",
+                        background: "rgba(10,10,15,0.65)",
+                        color: b.key.includes("gym") ? "#14f195" : b.key.includes("cafe") ? "#ffaa22" : "#00d1ff",
+                        fontFamily: "'Courier New', monospace",
+                        whiteSpace: "nowrap",
+                      }}>
+                        {(() => {
+                          if (b.key === "sports_sync") return "SYNC";
+                          if (b.key === "gym_stamina") return "STAM";
+                          if (b.key === "gym_focus") return "FOCUS";
+                          if (b.key === "cafe_recovery") return "RECOV";
+                          if (b.key === "cafe_creativity") return "CREAT";
+                          return String(b.label || b.key).replace(/\s+/g, "").split("+")[0].slice(0, 6).toUpperCase();
+                        })()}
+                      </span>
+                    ))}
+                  </span>
+                );
+              })()}
+              <div style={{ display: "flex", gap: 5, marginLeft: 2 }} />
             </div>
           ))}
         </div>
@@ -2828,6 +4164,410 @@ export default function ClawHQ() {
         borderRadius: "0 0 0 16px", border: "1px solid #2a2520", borderTop: "none", borderRight: "none",
         display: "flex", alignItems: "center", gap: 6, padding: "8px 14px"
       }}>
+        {/* Tools icon */}
+        <div onClick={() => setToolsOpen(true)} style={{
+          width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 8, border: `1px solid ${toolsOpen ? "#c8a050" : "#3a3530"}`, cursor: "pointer",
+          background: toolsOpen ? "rgba(200,160,80,0.08)" : "transparent"
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={toolsOpen ? "#c8a050" : "#6a6055"} strokeWidth="1.8">
+            <path d="M14.7 6.3a4 4 0 0 0-5.66 5.66l-5.2 5.2a2 2 0 0 0 2.83 2.83l5.2-5.2a4 4 0 0 0 5.66-5.66l-2.12 2.12-2.12-2.12 2.12-2.12Z"/>
+          </svg>
+        </div>
+        {/* Settings icon */}
+        <div onClick={() => setSettingsOpen(true)} style={{
+          width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 8, border: `1px solid ${settingsOpen ? "#c8a050" : "#3a3530"}`, cursor: "pointer",
+          background: settingsOpen ? "rgba(200,160,80,0.08)" : "transparent"
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={settingsOpen ? "#c8a050" : "#6a6055"} strokeWidth="1.8">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a7.8 7.8 0 0 0 .1-1l2-1.5-2-3.5-2.4.7a7.2 7.2 0 0 0-1.7-1l-.4-2.5H10l-.4 2.5a7.2 7.2 0 0 0-1.7 1l-2.4-.7-2 3.5 2 1.5a7.8 7.8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-.7a7.2 7.2 0 0 0 1.7 1l.4 2.5h4.1l.4-2.5a7.2 7.2 0 0 0 1.7-1l2.4.7 2-3.5-2-1.5Z"/>
+          </svg>
+        </div>
+        {/* Tasks icon */}
+        <div onClick={() => setTasksOpen(true)} style={{
+          width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 8, border: `1px solid ${tasksOpen ? "#c8a050" : "#3a3530"}`, cursor: "pointer",
+          background: tasksOpen ? "rgba(200,160,80,0.08)" : "transparent"
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tasksOpen ? "#c8a050" : "#6a6055"} strokeWidth="1.8">
+            <rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/>
+          </svg>
+        </div>
+      </div>
+
+      {/* RIGHT SIDE VERTICAL TABS */}
+      <div style={{
+        position: "fixed", top: "50%", right: 0, transform: "translateY(-50%)", zIndex: 106,
+        display: "flex", flexDirection: "column", gap: 6
+      }}>
+        <div onClick={() => { setHqPanelOpen(p => !p); setChatPanelOpen(false); }} style={{
+          writingMode: "vertical-rl", textOrientation: "mixed",
+          padding: "18px 10px", fontSize: 9, letterSpacing: 3, fontWeight: 600,
+          cursor: "pointer", transition: "all 0.3s ease", textAlign: "center",
+          fontFamily: "'Courier New', monospace",
+          color: hqPanelOpen ? "#0a0a0f" : "#c8a050",
+          background: hqPanelOpen ? "#c8a050" : "rgba(10,10,15,0.88)",
+          backdropFilter: "blur(16px)",
+          border: "1px solid #2a2520", borderRight: "none",
+          borderRadius: "10px 0 0 10px",
+          transform: hqPanelOpen ? "translateX(-380px)" : "translateX(0)",
+          opacity: chatPanelOpen ? 0 : 1, pointerEvents: chatPanelOpen ? "none" : "auto",
+        }}>OPEN DASHBOARD</div>
+        <div style={{
+          writingMode: "vertical-rl", textOrientation: "mixed",
+          padding: "18px 10px", fontSize: 9, letterSpacing: 3, fontWeight: 600,
+          cursor: "pointer", transition: "all 0.3s ease", textAlign: "center",
+          fontFamily: "'Courier New', monospace", color: "#9945ff",
+          background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
+          border: "1px solid #2a2520", borderRight: "none",
+          borderRadius: "10px 0 0 10px",
+          opacity: (hqPanelOpen || chatPanelOpen) ? 0 : 1, pointerEvents: (hqPanelOpen || chatPanelOpen) ? "none" : "auto",
+        }}>MARKETPLACE</div>
+        <div style={{
+          writingMode: "vertical-rl", textOrientation: "mixed",
+          padding: "18px 10px", fontSize: 9, letterSpacing: 3, fontWeight: 600,
+          cursor: "pointer", transition: "all 0.3s ease", textAlign: "center",
+          fontFamily: "'Courier New', monospace", color: "#00d1ff",
+          background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
+          border: "1px solid #2a2520", borderRight: "none",
+          borderRadius: "10px 0 0 10px",
+          opacity: (hqPanelOpen || chatPanelOpen) ? 0 : 1, pointerEvents: (hqPanelOpen || chatPanelOpen) ? "none" : "auto",
+        }}>ANALYTICS</div>
+      </div>
+
+      {/* OPEN DASHBOARD PANEL */}
+      <div style={{
+        position: "fixed", top: 80, right: hqPanelOpen ? 0 : -380, bottom: 40, width: 380, zIndex: 105,
+        background: "rgba(10,10,15,0.95)", backdropFilter: "blur(20px)",
+        border: "1px solid #2a2520", borderRight: "none",
+        borderRadius: "16px 0 0 16px",
+        display: "flex", flexDirection: "column", transition: "right 0.3s ease",
+        fontFamily: "'Courier New', monospace", overflow: "hidden"
+      }}>
+        {/* Header */}
+        <div style={{ padding: "16px 20px 12px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#14f195", letterSpacing: 2, marginBottom: 4 }}>MYCLAW3D</div>
+          <div style={{ fontSize: 10, color: "#6a6055" }}>Monitor outputs, runs, and schedules.</div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", borderBottom: "1px solid #2a2520", padding: "0 20px" }}>
+          {["inbox", "history", "playbooks", "observe"].map(tab => (
+            <div key={tab} onClick={() => setHqTab(tab)} style={{
+              padding: "10px 16px", fontSize: 10, letterSpacing: 1.5, fontWeight: 600,
+              textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s",
+              color: hqTab === tab ? "#e0e0e8" : "#6a6055",
+              background: hqTab === tab ? "rgba(0,209,255,0.1)" : "transparent",
+              borderRadius: hqTab === tab ? "6px 6px 0 0" : 0,
+              borderBottom: hqTab === tab ? "2px solid #00d1ff" : "2px solid transparent",
+            }}>{tab}</div>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
+
+          {hqTab === "inbox" && (
+            <div>
+              <div style={{ fontSize: 10, color: "#6a6055", textAlign: "center", padding: "40px 0" }}>No new messages in inbox.</div>
+            </div>
+          )}
+
+          {hqTab === "history" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {obsEvents.length === 0 && (
+                <div style={{ fontSize: 10, color: "#6a6055", textAlign: "center", padding: "40px 0" }}>
+                  No history yet. Run a task, chat, or invoke a tool.
+                </div>
+              )}
+              {obsEvents.slice(0, 60).map(e => (
+                <div key={e.id} style={{
+                  padding: "10px 14px", background: "rgba(30,28,24,0.6)", border: "1px solid #2a2520",
+                  borderRadius: 8, borderLeft: `3px solid ${e.ok ? "#14f195" : "#ffaa22"}`
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, color: e.ok ? "#14f195" : "#ffaa22" }}>
+                      {(e.type || "event").toUpperCase()}
+                    </span>
+                    <span style={{ fontSize: 9, color: "#4a4540" }}>
+                      {new Date(e.ts).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#c8a050" }}>
+                      {AGENTS.find(a => a.id === e.agentId)?.name || e.agentId || "—"}
+                    </span>
+                    <span style={{ fontSize: 9, color: "#4a4540" }}>
+                      {typeof e.ms === "number" ? `${e.ms}ms` : "—"}
+                    </span>
+                    {!e.ok && (e.error || e.status) && (
+                      <span style={{ fontSize: 9, color: "#ffaa22" }}>{e.error || `HTTP ${e.status}`}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#9a9590", lineHeight: 1.4 }}>
+                    {e.label || "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {hqTab === "playbooks" && (
+            <div>
+              {/* Playbooks header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#6a6055", letterSpacing: 2, marginBottom: 4 }}>PLAYBOOKS</div>
+                  <div style={{ fontSize: 10, color: "#4a4540" }}>Launch reusable schedules for the whole workspace.</div>
+                </div>
+                <button onClick={refreshPlaybooks} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 9, fontWeight: 700,
+                  background: "transparent", color: "#00d1ff", border: "1px solid #00d1ff",
+                  cursor: "pointer", fontFamily: "inherit", letterSpacing: 1
+                }}>REFRESH</button>
+              </div>
+
+              {/* Active jobs */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#6a6055", letterSpacing: 2, marginBottom: 8 }}>ACTIVE JOBS</div>
+                {playbooks.filter(p => p.enabled).length === 0 ? (
+                  <div style={{ fontSize: 10, color: "#4a4540", padding: "8px 0" }}>No active playbooks yet.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {playbooks.filter(p => p.enabled).slice(0, 6).map(p => (
+                      <div key={p.id} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: "#e0e0e8", letterSpacing: 1 }}>{p.title}</div>
+                          <div style={{ flex: 1 }} />
+                          <button onClick={async () => {
+                            try {
+                              await fetch(`/api/playbooks/${p.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: false }) });
+                            } catch { /* ignore */ }
+                            refreshPlaybooks();
+                          }} style={{
+                            padding: "4px 10px", borderRadius: 999, fontSize: 9, fontWeight: 900,
+                            background: "transparent", color: "#ffaa22", border: "1px solid #2a2520",
+                            cursor: "pointer", letterSpacing: 1
+                          }}>STOP</button>
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 9, color: "#6a6055", lineHeight: 1.5 }}>
+                          Every {Math.round((Number(p.intervalMs) || 60_000) / 1000)}s · next {p.nextRunAt ? new Date(p.nextRunAt).toLocaleTimeString() : "soon"}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 9, color: "#4a4540", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {p.taskText}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Separator */}
+              <div style={{ height: 1, background: "#2a2520", marginBottom: 16 }} />
+
+              {/* Templates */}
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#6a6055", letterSpacing: 2, marginBottom: 12 }}>TEMPLATES</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {[
+                  { title: "DAILY MORNING BRIEFING", desc: "Every 24h. Summarize priorities, blockers, and what changed overnight.", color: "#c8a050", intervalMs: 24 * 60 * 60 * 1000, taskText: "Create a morning briefing: priorities, blockers, and what changed overnight. Keep it concise." },
+                  { title: "NIGHTLY CODE REVIEW DIGEST", desc: "Every 24h. Summarize risky changes or regressions.", color: "#c8a050", intervalMs: 24 * 60 * 60 * 1000, taskText: "Create a nightly digest: risky changes, regressions, and recommended follow-ups." },
+                  { title: "HOURLY HEALTH CHECK", desc: "Every 60 min. Report runtime health and failures.", color: "#00d1ff", intervalMs: 60 * 60 * 1000, taskText: "Run a health check: note any failed tasks/tools, timeouts, and suspicious patterns. Suggest fixes." },
+                  { title: "WEEKLY PROGRESS REPORT", desc: "Every 7d. Roll up wins and next steps.", color: "#14f195", intervalMs: 7 * 24 * 60 * 60 * 1000, taskText: "Create a weekly progress report: wins, unfinished work, and next steps." },
+                  { title: "CONTINUOUS MONITOR", desc: "Every 15 min. Watch for drift or unusual errors.", color: "#9945ff", intervalMs: 15 * 60 * 1000, taskText: "Monitor for drift, silent failures, or unusual error spikes. Summarize findings and propose mitigations." },
+                ].map((t, i) => (
+                  <div key={i} onClick={async () => {
+                    try {
+                      await fetch("/api/playbooks", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          title: t.title,
+                          desc: t.desc,
+                          color: t.color,
+                          intervalMs: t.intervalMs,
+                          agentId: "random",
+                          taskText: t.taskText || t.desc,
+                          enabled: true,
+                        }),
+                      });
+                    } catch { /* ignore */ }
+                    refreshPlaybooks();
+                    setActivityLog(prev => [{ time: timeStr(), hl: "MYCLAW3D", text: `playbook enabled: ${t.title}` }, ...prev].slice(0, 50));
+                  }} style={{
+                    padding: "14px 16px", background: "rgba(30,28,24,0.6)",
+                    border: "1px solid #2a2520", borderRadius: 10,
+                    borderLeft: `3px solid ${t.color}`, cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#e0e0e8", letterSpacing: 1, marginBottom: 6 }}>{t.title}</div>
+                    <div style={{ fontSize: 10, color: "#6a6055", lineHeight: 1.5 }}>{t.desc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hqTab === "observe" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "#e0e0e8", letterSpacing: 1.2 }}>LIVE FEED</div>
+                  <button onClick={() => { setObsEvents([]); setObsStatsByAgent(() => {
+                    const s = {}; AGENTS.forEach(a => { s[a.id] = { calls: 0, errors: 0, timeMs: 0, inTok: 0, outTok: 0 }; }); return s;
+                  }); }} style={{
+                    padding: "4px 10px", borderRadius: 999, fontSize: 9, fontWeight: 800,
+                    background: "transparent", color: "#6a6055", border: "1px solid #2a2520",
+                    cursor: "pointer", letterSpacing: 1
+                  }}>
+                    CLEAR
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto auto", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                  <select value={obsFilterAgent} onChange={(e) => setObsFilterAgent(e.target.value)} style={{
+                    width: "100%", padding: "7px 9px", borderRadius: 10,
+                    background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                    border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 10
+                  }}>
+                    <option value="all">All agents</option>
+                    {AGENTS.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+
+                  <select value={obsFilterType} onChange={(e) => setObsFilterType(e.target.value)} style={{
+                    width: "100%", padding: "7px 9px", borderRadius: 10,
+                    background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                    border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 10
+                  }}>
+                    <option value="all">All types</option>
+                    {["tool", "task", "chat", "memory"].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#6a6055", userSelect: "none" }}>
+                    <input type="checkbox" checked={obsErrorsOnly} onChange={(e) => setObsErrorsOnly(e.target.checked)} />
+                    errors only
+                  </label>
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 9, color: "#6a6055", userSelect: "none", justifySelf: "end" }}>
+                    <input type="checkbox" checked={obsShowDetails} onChange={(e) => setObsShowDetails(e.target.checked)} />
+                    details
+                  </label>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {obsEvents.length === 0 && (
+                    <div style={{ fontSize: 10, color: "#6a6055", textAlign: "center", padding: "18px 0" }}>
+                      No events yet. Run a task, chat, or invoke a tool.
+                    </div>
+                  )}
+                  {obsEvents
+                    .filter(e => {
+                      if (obsErrorsOnly && e.ok) return false;
+                      if (obsFilterAgent !== "all" && e.agentId !== obsFilterAgent) return false;
+                      if (obsFilterType !== "all" && (e.type || "") !== obsFilterType) return false;
+                      return true;
+                    })
+                    .slice(0, 40)
+                    .map(e => (
+                    <div key={e.id} style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #2a2520",
+                      background: "rgba(10,10,15,0.55)",
+                      borderLeft: `3px solid ${e.ok ? "#14f195" : "#ffaa22"}`
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: e.ok ? "#14f195" : "#ffaa22" }}>
+                          {(e.type || "event").toUpperCase()}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#c8a050", fontWeight: 700 }}>
+                          {AGENTS.find(a => a.id === e.agentId)?.name || e.agentId || "—"}
+                        </div>
+                        <div style={{ flex: 1 }} />
+                        <div style={{ fontSize: 9, color: "#4a4540" }}>
+                          {new Date(e.ts).toLocaleTimeString()}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 6, fontSize: 10, color: "#9a9590", lineHeight: 1.4 }}>
+                        {e.label || "—"}
+                      </div>
+                      <div style={{ marginTop: 6, display: "flex", gap: 10, fontSize: 9, color: "#6a6055" }}>
+                        <span>{typeof e.ms === "number" ? `${e.ms}ms` : "—"}</span>
+                        <span>in≈{e.inTok || 0} tok</span>
+                        <span>out≈{e.outTok || 0} tok</span>
+                        {!e.ok && (e.error || e.status) && (
+                          <span style={{ color: "#ffaa22" }}>{e.error || `HTTP ${e.status}`}</span>
+                        )}
+                      </div>
+
+                      {obsShowDetails && (e.req || e.res) && (
+                        <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                          {e.req && (
+                            <div>
+                              <div style={{ fontSize: 9, color: "#4a4540", marginBottom: 4 }}>req</div>
+                              <pre style={{
+                                margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                                fontSize: 9, color: "#cfc9c2", fontFamily: "'Courier New', monospace",
+                                padding: 8, borderRadius: 10, border: "1px solid #2a2520",
+                                background: "rgba(0,0,0,0.25)"
+                              }}>{e.req}</pre>
+                            </div>
+                          )}
+                          {e.res && (
+                            <div>
+                              <div style={{ fontSize: 9, color: "#4a4540", marginBottom: 4 }}>res</div>
+                              <pre style={{
+                                margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                                fontSize: 9, color: "#cfc9c2", fontFamily: "'Courier New', monospace",
+                                padding: 8, borderRadius: 10, border: "1px solid #2a2520",
+                                background: "rgba(0,0,0,0.25)"
+                              }}>{e.res}</pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ padding: 12, borderRadius: 12, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: "#e0e0e8", letterSpacing: 1.2, marginBottom: 8 }}>PER-AGENT STATS</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {AGENTS.map(a => {
+                    const s = obsStatsByAgent[a.id] || { calls: 0, errors: 0, timeMs: 0, inTok: 0, outTok: 0 };
+                    return (
+                      <div key={a.id} style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center", padding: "8px 10px", borderRadius: 10, border: "1px solid #2a2520", background: "rgba(10,10,15,0.55)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: 999, background: hexToCSS(a.color), boxShadow: `0 0 8px ${hexToCSS(a.color)}80` }} />
+                          <div style={{ fontSize: 10, fontWeight: 800, color: "#c8a050" }}>{a.name}</div>
+                          <div style={{ fontSize: 9, color: "#4a4540" }}>{a.role}</div>
+                        </div>
+                        <div style={{ fontSize: 9, color: "#6a6055", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                          <span>{s.calls} calls</span>
+                          <span style={{ color: s.errors ? "#ffaa22" : "#14f195" }}>{s.errors} errs</span>
+                          <span>{Math.round((s.timeMs || 0) / 1000)}s</span>
+                          <span>in≈{s.inTok || 0}</span>
+                          <span>out≈{s.outTok || 0}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* BOTTOM LEFT UTILITIES DOCK */}
+      <div style={{
+        position: "fixed", left: 0, bottom: 44, zIndex: 101,
+        background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
+        borderRadius: "0 16px 16px 0", border: "1px solid #2a2520", borderLeft: "none",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "10px 10px"
+      }}>
         {/* Map icon */}
         <div onClick={() => setMapOpen(prev => !prev)} style={{
           width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
@@ -2838,13 +4578,16 @@ export default function ClawHQ() {
             <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
           </svg>
         </div>
-        {/* Edit/pencil icon */}
-        <div style={{
+        {/* Docs/manual icon */}
+        <div onClick={() => setDocsOpen(true)} style={{
           width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center",
-          borderRadius: 8, border: "1px solid #3a3530", cursor: "pointer"
+          borderRadius: 8, border: `1px solid ${docsOpen ? "#c8a050" : "#3a3530"}`, cursor: "pointer",
+          background: docsOpen ? "rgba(200,160,80,0.08)" : "transparent"
         }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6a6055" strokeWidth="1.8">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={docsOpen ? "#c8a050" : "#6a6055"} strokeWidth="1.8">
+            <path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20"/>
+            <path d="M20 2H6.5A2.5 2.5 0 0 0 4 4.5v15"/>
+            <path d="M8 6h8"/><path d="M8 10h8"/><path d="M8 14h6"/>
           </svg>
         </div>
         {/* Volume/mute icon */}
@@ -2868,158 +4611,6 @@ export default function ClawHQ() {
         </div>
       </div>
 
-      {/* RIGHT SIDE VERTICAL TABS */}
-      <div style={{
-        position: "fixed", top: "50%", right: 0, transform: "translateY(-50%)", zIndex: 106,
-        display: "flex", flexDirection: "column", gap: 6
-      }}>
-        <div onClick={() => { setHqPanelOpen(p => !p); setChatPanelOpen(false); }} style={{
-          writingMode: "vertical-rl", textOrientation: "mixed",
-          padding: "18px 10px", fontSize: 9, letterSpacing: 3, fontWeight: 600,
-          cursor: "pointer", transition: "all 0.3s ease", textAlign: "center",
-          fontFamily: "'Courier New', monospace",
-          color: hqPanelOpen ? "#0a0a0f" : "#c8a050",
-          background: hqPanelOpen ? "#c8a050" : "rgba(10,10,15,0.88)",
-          backdropFilter: "blur(16px)",
-          border: "1px solid #2a2520", borderRight: "none",
-          borderRadius: "10px 0 0 10px",
-          transform: hqPanelOpen ? "translateX(-380px)" : "translateX(0)",
-          opacity: chatPanelOpen ? 0 : 1, pointerEvents: chatPanelOpen ? "none" : "auto",
-        }}>OPEN HQ</div>
-        <div style={{
-          writingMode: "vertical-rl", textOrientation: "mixed",
-          padding: "18px 10px", fontSize: 9, letterSpacing: 3, fontWeight: 600,
-          cursor: "pointer", transition: "all 0.3s ease", textAlign: "center",
-          fontFamily: "'Courier New', monospace", color: "#9945ff",
-          background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
-          border: "1px solid #2a2520", borderRight: "none",
-          borderRadius: "10px 0 0 10px",
-          opacity: (hqPanelOpen || chatPanelOpen) ? 0 : 1, pointerEvents: (hqPanelOpen || chatPanelOpen) ? "none" : "auto",
-        }}>MARKETPLACE</div>
-        <div style={{
-          writingMode: "vertical-rl", textOrientation: "mixed",
-          padding: "18px 10px", fontSize: 9, letterSpacing: 3, fontWeight: 600,
-          cursor: "pointer", transition: "all 0.3s ease", textAlign: "center",
-          fontFamily: "'Courier New', monospace", color: "#00d1ff",
-          background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
-          border: "1px solid #2a2520", borderRight: "none",
-          borderRadius: "10px 0 0 10px",
-          opacity: (hqPanelOpen || chatPanelOpen) ? 0 : 1, pointerEvents: (hqPanelOpen || chatPanelOpen) ? "none" : "auto",
-        }}>ANALYTICS</div>
-      </div>
-
-      {/* OPEN HQ PANEL */}
-      <div style={{
-        position: "fixed", top: 80, right: hqPanelOpen ? 0 : -380, bottom: 40, width: 380, zIndex: 105,
-        background: "rgba(10,10,15,0.95)", backdropFilter: "blur(20px)",
-        border: "1px solid #2a2520", borderRight: "none",
-        borderRadius: "16px 0 0 16px",
-        display: "flex", flexDirection: "column", transition: "right 0.3s ease",
-        fontFamily: "'Courier New', monospace", overflow: "hidden"
-      }}>
-        {/* Header */}
-        <div style={{ padding: "16px 20px 12px" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: "#14f195", letterSpacing: 2, marginBottom: 4 }}>HEADQUARTERS</div>
-          <div style={{ fontSize: 10, color: "#6a6055" }}>Monitor outputs, runs, and schedules.</div>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: "flex", borderBottom: "1px solid #2a2520", padding: "0 20px" }}>
-          {["inbox", "history", "playbooks"].map(tab => (
-            <div key={tab} onClick={() => setHqTab(tab)} style={{
-              padding: "10px 16px", fontSize: 10, letterSpacing: 1.5, fontWeight: 600,
-              textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s",
-              color: hqTab === tab ? "#e0e0e8" : "#6a6055",
-              background: hqTab === tab ? "rgba(0,209,255,0.1)" : "transparent",
-              borderRadius: hqTab === tab ? "6px 6px 0 0" : 0,
-              borderBottom: hqTab === tab ? "2px solid #00d1ff" : "2px solid transparent",
-            }}>{tab}</div>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px" }}>
-
-          {hqTab === "inbox" && (
-            <div>
-              <div style={{ fontSize: 10, color: "#6a6055", textAlign: "center", padding: "40px 0" }}>No new messages in inbox.</div>
-            </div>
-          )}
-
-          {hqTab === "history" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                { agent: "Alpha", action: "Swapped 2 SOL → USDC on Jupiter", time: "2 min ago", status: "success" },
-                { agent: "Echo", action: "Executed DCA buy order #47", time: "5 min ago", status: "success" },
-                { agent: "Charlie", action: "Scanned 12 new token launches", time: "8 min ago", status: "success" },
-                { agent: "Bravo", action: "Rebalanced portfolio allocation", time: "12 min ago", status: "success" },
-                { agent: "Delta", action: "NFT floor price check — Tensor", time: "15 min ago", status: "success" },
-                { agent: "Foxtrot", action: "Flagged suspicious transfer", time: "20 min ago", status: "warning" },
-              ].map((h, i) => (
-                <div key={i} style={{
-                  padding: "10px 14px", background: "rgba(30,28,24,0.6)", border: "1px solid #2a2520",
-                  borderRadius: 8, borderLeft: `3px solid ${h.status === "warning" ? "#ffaa22" : "#14f195"}`
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "#c8a050" }}>{h.agent}</span>
-                    <span style={{ fontSize: 9, color: "#4a4540" }}>{h.time}</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: "#9a9590", lineHeight: 1.4 }}>{h.action}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {hqTab === "playbooks" && (
-            <div>
-              {/* Playbooks header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#6a6055", letterSpacing: 2, marginBottom: 4 }}>PLAYBOOKS</div>
-                  <div style={{ fontSize: 10, color: "#4a4540" }}>Launch reusable schedules for the whole headquarters.</div>
-                </div>
-                <button style={{
-                  padding: "6px 14px", borderRadius: 6, fontSize: 9, fontWeight: 700,
-                  background: "transparent", color: "#00d1ff", border: "1px solid #00d1ff",
-                  cursor: "pointer", fontFamily: "inherit", letterSpacing: 1
-                }}>REFRESH</button>
-              </div>
-
-              {/* Active jobs */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#6a6055", letterSpacing: 2, marginBottom: 8 }}>ACTIVE JOBS</div>
-                <div style={{ fontSize: 10, color: "#4a4540", padding: "8px 0" }}>No active playbooks yet.</div>
-              </div>
-
-              {/* Separator */}
-              <div style={{ height: 1, background: "#2a2520", marginBottom: 16 }} />
-
-              {/* Templates */}
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#6a6055", letterSpacing: 2, marginBottom: 12 }}>TEMPLATES</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  { title: "DAILY MORNING BRIEFING", desc: "Every day at 9am. Summarize priorities, blockers, and what changed overnight.", color: "#c8a050" },
-                  { title: "NIGHTLY CODE REVIEW DIGEST", desc: "Every night at midnight. Review the day and summarize risky changes or regressions.", color: "#c8a050" },
-                  { title: "HOURLY HEALTH CHECK", desc: "Every 60 minutes. Report runtime health, failures, and anything that needs intervention.", color: "#00d1ff" },
-                  { title: "WEEKLY PROGRESS REPORT", desc: "Every Monday at 8am. Roll up wins, unfinished work, and next steps.", color: "#14f195" },
-                  { title: "CONTINUOUS MONITOR", desc: "Every 15 minutes. Watch for drift, silent failures, or anything unusual.", color: "#9945ff" },
-                ].map((t, i) => (
-                  <div key={i} style={{
-                    padding: "14px 16px", background: "rgba(30,28,24,0.6)",
-                    border: "1px solid #2a2520", borderRadius: 10,
-                    borderLeft: `3px solid ${t.color}`, cursor: "pointer",
-                    transition: "all 0.2s"
-                  }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#e0e0e8", letterSpacing: 1, marginBottom: 6 }}>{t.title}</div>
-                    <div style={{ fontSize: 10, color: "#6a6055", lineHeight: 1.5 }}>{t.desc}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* BOTTOM LEFT STATUS BAR */}
       <div style={{
         position: "fixed", bottom: 0, left: 0, zIndex: 100,
@@ -3028,21 +4619,41 @@ export default function ClawHQ() {
         display: "flex", alignItems: "center", padding: "10px 24px", gap: 12,
         fontFamily: "'Courier New', monospace", fontSize: 10, color: "#6a6055"
       }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 5, color: "#14f195" }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#14f195", boxShadow: "0 0 6px #14f195" }} />
-          CONNECTED
+        <span style={{ display: "flex", alignItems: "center", gap: 5, color: serverHealthMeta.ok ? "#14f195" : "#ff4d4d" }}>
+          <span style={{
+            width: 7, height: 7, borderRadius: "50%",
+            background: serverHealthMeta.ok ? "#14f195" : "#ff4d4d",
+            boxShadow: serverHealthMeta.ok ? "0 0 6px #14f195" : "0 0 6px rgba(255,77,77,0.8)"
+          }} />
+          {serverHealthMeta.ok ? "CONNECTED" : "DISCONNECTED"}
         </span>
         <span style={{ color: "#3a3530" }}>·</span>
-        <span>{agents.filter(a => a.status === "working").length} working</span>
+        <span style={{ color: serverHealth?.hasToken ? "#14f195" : "#ffaa22" }}>
+          {serverHealth?.hasToken ? "TOKEN OK" : "NO TOKEN"}
+        </span>
         <span style={{ color: "#3a3530" }}>·</span>
-        <span>{agents.filter(a => a.status === "idle").length} idle</span>
+        <span>{serverHealthMeta.ms != null ? `${serverHealthMeta.ms}ms` : "—"}</span>
+        <span style={{ color: "#3a3530" }}>·</span>
+        <span>{agents.filter(a => a.runtime === "thinking").length} thinking</span>
+        <span style={{ color: "#3a3530" }}>·</span>
+        <span>{agents.filter(a => a.runtime === "tool").length} tool</span>
+        <span style={{ color: "#3a3530" }}>·</span>
+        <span>{agents.filter(a => a.runtime === "error").length} error</span>
+        <span style={{ color: "#3a3530" }}>·</span>
+        <span>{agents.filter(a => !a.runtime || a.runtime === "idle").length} idle</span>
         <span style={{ color: "#3a3530" }}>·</span>
         <span style={{ display: "flex", alignItems: "center", gap: 4, color: "#c8a050" }}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="10"/></svg>
           quiet
         </span>
-        <span style={{ color: "#3a3530" }}>·</span>
-        <span>drag · scroll · space+drag · dbl-click</span>
+        {serverHealthMeta.ok ? null : (
+          <>
+            <span style={{ color: "#3a3530" }}>·</span>
+            <span style={{ color: "#ffaa22" }}>
+              {serverHealthMeta.error ? `server: ${serverHealthMeta.error}` : "server unreachable"}
+            </span>
+          </>
+        )}
       </div>
 
       {/* BOTTOM RIGHT CHAT BUTTON */}
@@ -3080,7 +4691,7 @@ export default function ClawHQ() {
           <div style={{ padding: "0 14px 10px", fontSize: 10, color: "#6a6055", fontWeight: 600, letterSpacing: 2 }}>
             AGENTS <span style={{ color: "#4a4540", marginLeft: 6 }}>{AGENTS.length}</span>
           </div>
-          {AGENTS.map(a => (
+          {agents.map(a => (
             <div key={a.id} onClick={() => setChatAgent(a.id)} style={{
               display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
               cursor: "pointer", transition: "all 0.15s",
@@ -3089,7 +4700,8 @@ export default function ClawHQ() {
             }}>
               <span style={{
                 width: 8, height: 8, borderRadius: "50%",
-                background: a.status === "working" ? "#14f195" : "#6a6055", flexShrink: 0
+                background: (a.runtime === "error" ? "#ff4d4d" : a.runtime === "tool" ? "#9945ff" : a.runtime === "thinking" ? "#00d1ff" : "#6a6055"),
+                flexShrink: 0
               }} />
               <span style={{ fontSize: 11, color: chatAgent === a.id ? "#e0e0e8" : "#6a6055" }}>{a.name}</span>
             </div>
@@ -3209,7 +4821,7 @@ export default function ClawHQ() {
                 <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
               </svg>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#e0e0e8" }}>HQ FLOOR MAP</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#e0e0e8" }}>FLOOR MAP</div>
                 <div style={{ fontSize: 10, color: "#6a6055" }}>Live agent positions</div>
               </div>
               <div style={{ flex: 1 }} />
@@ -3217,9 +4829,12 @@ export default function ClawHQ() {
               <div onClick={() => setMapOpen(false)} style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, cursor: "pointer", color: "#6a6055", fontSize: 18, border: "1px solid #2a2520" }}>×</div>
             </div>
             <div style={{ flex: 1, padding: 16, background: "#060a06" }}>
-              <svg viewBox="-36 -9 85 68" width="100%" height="100%" style={{ borderRadius: 6 }}>
+              <svg viewBox="-40 -12 95 80" width="100%" height="100%" style={{ borderRadius: 6 }}>
                 {Array.from({length: 86}, (_, i) => i - 36).map(x => (<line key={`gx${x}`} x1={x} y1="-9" x2={x} y2="59" stroke="rgba(20,241,149,0.04)" strokeWidth="0.05"/>))}
                 {Array.from({length: 69}, (_, i) => i - 9).map(z => (<line key={`gz${z}`} x1="-36" y1={z} x2="49" y2={z} stroke="rgba(20,241,149,0.04)" strokeWidth="0.05"/>))}
+                {/* Outdoor park / ground */}
+                <rect x={6-25} y={SPORTS_Z-12.5} width="50" height="25" fill="rgba(47,107,58,0.12)" stroke="rgba(47,107,58,0.4)" strokeWidth="0.08" rx="0.4"/>
+                <text x={6} y={SPORTS_Z-12.8} fill="rgba(120,200,140,0.8)" fontSize="0.6" fontWeight="bold" textAnchor="middle" fontFamily="monospace">PARK</text>
                 <rect x="-9" y="-7" width="18" height="14" fill="rgba(20,241,149,0.03)" stroke="rgba(20,241,149,0.15)" strokeWidth="0.08"/>
                 <rect x={LEFT_GYM_X-8} y={LEFT_GYM_Z-7} width="16" height="14" fill="rgba(255,120,120,0.03)" stroke="rgba(255,120,120,0.2)" strokeWidth="0.08"/>
                 <rect x={SPORTS_X-6} y={SPORTS_Z-7} width="12" height="14" fill="rgba(200,160,80,0.03)" stroke="rgba(200,160,80,0.15)" strokeWidth="0.08"/>
@@ -3269,15 +4884,6 @@ export default function ClawHQ() {
       {monitorModal && (() => {
         const agent = AGENTS.find(a => a.id === monitorModal);
         if (!agent) return null;
-        const msgs = {
-          alpha: ["Scanning Jupiter routes...", "SOL/USDC spread: 0.02%", "Executing swap: 2 SOL → USDC", "TX confirmed: 5xK7m...9pQ2", "P&L today: +0.34 SOL", "Checking orderbook depth...", "Route: SOL→USDC via Raydium", "Slippage: 0.1%", "Balance: 12.4 SOL"],
-          bravo: ["Analyzing yield farms...", "APY comparison: Marinade 7.2%", "Rebalancing portfolio...", "Moving 30% to stables", "Risk score: LOW", "DeFi TVL: $4.2B", "Staking rewards claimed", "New farm detected: mSOL/USDC"],
-          cipher: ["Querying on-chain data...", "Parsing 1,247 transactions", "Anomaly detected: wallet 0x8f..", "Generating report...", "Clustering whale wallets...", "Data pipeline: HEALTHY", "Top holder moved 500K USDC", "Network TPS: 3,847"],
-          delta: ["Scanning NFT floors...", "Tensor: Mad Lads 12.4 SOL", "New collection: Claynosaurz", "Rarity analysis complete", "Listing snipe ready", "Watching 3 collections", "Floor change: -0.3 SOL", "Volume 24h: 2,100 SOL"],
-          echo: ["TX queue: 3 pending", "Sending 0.5 SOL → 7xQ...", "Confirmed in 412ms", "Priority fee: 0.000005 SOL", "Batch TX: 5/5 complete", "Nonce account updated", "Compute units: 200,000", "Retry count: 0"],
-          flux: ["Market feed active", "SOL: $168.42 (+2.1%)", "Volume spike detected: RAY", "Alert: BTC dominance ↓ 52%", "Monitoring 47 pairs", "Sentiment analysis: BULLISH", "Funding rate: +0.01%", "Open interest: $2.1B"],
-        };
-        const agentMsgs = msgs[monitorModal] || ["..."];
         return (
           <div onClick={() => setMonitorModal(null)} style={{
             position: "fixed", inset: 0, zIndex: 200,
@@ -3324,18 +4930,812 @@ export default function ClawHQ() {
               </div>
 
               {/* Live terminal */}
-              <MonitorTerminal agentId={monitorModal} agent={agent} messages={agentMsgs} agents={agents} agentTargets={agentTargetsRef} />
+              <MonitorTerminal
+                agentId={monitorModal}
+                agent={agent}
+                terminalLines={terminalLogsRef.current[monitorModal] || []}
+                terminalTick={terminalTick}
+                agentTargets={agentTargetsRef}
+                buffsRef={buffsRef}
+                buffsTick={buffsTick}
+              />
             </div>
           </div>
         );
       })()}
+
+      {/* DOCS MODAL */}
+      {docsOpen && (
+        <div onClick={() => setDocsOpen(false)} style={{
+          position: "fixed", inset: 0, zIndex: 220,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: 640, maxWidth: "calc(100vw - 40px)", height: 520, maxHeight: "calc(100vh - 60px)",
+            background: "rgba(10,10,15,0.95)",
+            border: "2px solid rgba(200,160,80,0.25)",
+            borderRadius: 16, overflow: "hidden",
+            boxShadow: "0 0 40px rgba(200,160,80,0.12)",
+            display: "flex", flexDirection: "column"
+          }}>
+            <div style={{
+              padding: "14px 18px", display: "flex", alignItems: "center", gap: 12,
+              background: "rgba(200,160,80,0.08)", borderBottom: "1px solid rgba(200,160,80,0.2)"
+            }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(200,160,80,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c8a050" strokeWidth="1.8">
+                  <path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20"/>
+                  <path d="M20 2H6.5A2.5 2.5 0 0 0 4 4.5v15"/>
+                  <path d="M8 6h8"/><path d="M8 10h8"/><path d="M8 14h6"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#e0e0e8", letterSpacing: 0.4 }}>Agent Guide</div>
+                <div style={{ fontSize: 11, color: "#6a6055", marginTop: 2, fontFamily: "'Courier New', monospace" }}>
+                  How to command agents, read terminals, and connect to OpenClaw.
+                </div>
+              </div>
+              <div onClick={() => setDocsOpen(false)} style={{
+                width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 8, cursor: "pointer", color: "#6a6055", fontSize: 18, border: "1px solid #2a2520"
+              }}>×</div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>Chatting with agents</div>
+                  <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
+                    - Open the chat panel, pick an agent, and type a message.<br />
+                    - Normal messages go to the AI (OpenClaw) and stream back live.<br />
+                    - Replies also appear in the desk terminal output when the agent is at their desk.
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>Movement & activities</div>
+                  <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
+                    These commands trigger in-world animations (local behaviors):<br />
+                    - <b>go to desk</b>, <b>work</b><br />
+                    - <b>relax</b>, <b>sofa</b><br />
+                    - <b>cafeteria</b>, <b>coffee</b><br />
+                    - <b>gym</b> (or treadmill/bike/etc.)<br />
+                    - <b>play ping pong</b>, <b>play pool</b><br />
+                    - <b>stand up</b>, <b>stop</b>
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>Terminals & monitors</div>
+                  <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
+                    - Desk screens show recent terminal lines when the agent is seated.<br />
+                    - Click a desk monitor to open the full terminal modal.<br />
+                    - If an agent is away from their desk, the terminal is idle.
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>OpenClaw connection (required)</div>
+                  <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
+                    This app routes AI chat through your OpenClaw Gateway’s OpenAI-compatible endpoint
+                    (<span style={{ color: "#00d1ff" }}>/v1/chat/completions</span>).<br />
+                    - Start OpenClaw Gateway<br />
+                    - Set <b>OPENCLAW_GATEWAY_TOKEN</b> for the local server<br />
+                    - Run <b>npm run server</b> and <b>npm run dev</b>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(10,10,15,0.6)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#e0e0e8", marginBottom: 8 }}>Tips</div>
+                <div style={{ fontSize: 11, lineHeight: 1.7, color: "#b9b2aa", fontFamily: "'Courier New', monospace" }}>
+                  - If you see a “missing token” error, the server isn’t configured with <b>OPENCLAW_GATEWAY_TOKEN</b>.<br />
+                  - Want separate personalities? Update OpenClaw agent identities/workspaces and map each MyClaw3D agent to a different OpenClaw agent id later.<br />
+                  - Use the map icon to open the floor map overlay.
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 6 }}>Where did Tools go?</div>
+                <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
+                  Skills & Tool Console now live in the dedicated <b>Tools</b> modal (wrench icon in the top-right).
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TOOLS MODAL */}
+      {toolsOpen && (
+        <div onClick={() => setToolsOpen(false)} style={{
+          position: "fixed", inset: 0, zIndex: 220,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: 680, maxWidth: "calc(100vw - 40px)", height: 560, maxHeight: "calc(100vh - 60px)",
+            background: "rgba(10,10,15,0.95)",
+            border: "2px solid rgba(200,160,80,0.25)",
+            borderRadius: 16, overflow: "hidden",
+            boxShadow: "0 0 40px rgba(200,160,80,0.12)",
+            display: "flex", flexDirection: "column"
+          }}>
+            <div style={{
+              padding: "14px 18px", display: "flex", alignItems: "center", gap: 12,
+              background: "rgba(200,160,80,0.08)", borderBottom: "1px solid rgba(200,160,80,0.2)"
+            }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(200,160,80,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c8a050" strokeWidth="1.8">
+                  <path d="M14.7 6.3a4 4 0 0 0-5.66 5.66l-5.2 5.2a2 2 0 0 0 2.83 2.83l5.2-5.2a4 4 0 0 0 5.66-5.66l-2.12 2.12-2.12-2.12 2.12-2.12Z"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#e0e0e8", letterSpacing: 0.4 }}>Tools</div>
+                <div style={{ fontSize: 11, color: "#6a6055", marginTop: 2, fontFamily: "'Courier New', monospace" }}>
+                  Role-aware quick skills + direct OpenClaw tool invocation.
+                </div>
+              </div>
+              <div onClick={() => setToolsOpen(false)} style={{
+                width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 8, cursor: "pointer", color: "#6a6055", fontSize: 18, border: "1px solid #2a2520"
+              }}>×</div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
+              <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 4 }}>Skills & Tool Console (OpenClaw)</div>
+                <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace", marginBottom: 8 }}>
+                  Quick skills are role-aware presets; advanced users can still call raw tools below.
+                </div>
+
+                {/* Role-based quick skills */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                  <button
+                    disabled={toolBusy}
+                    onClick={() => {
+                      setToolName("sessions_list");
+                      setToolAction("json");
+                      setToolArgsText(JSON.stringify({ filter: "market", limit: 20 }, null, 2));
+                      invokeTool();
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999,
+                      border: "1px solid #2a2520",
+                      background: "rgba(10,10,15,0.9)",
+                      color: "#14f195",
+                      fontSize: 10, fontFamily: "'Courier New', monospace",
+                      cursor: toolBusy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Scan market
+                  </button>
+
+                  <button
+                    disabled={toolBusy}
+                    onClick={async () => {
+                      const a = AGENTS.find(x => x.id === toolAgent);
+                      const msg = "Summarize the latest market news in bullet points.";
+                      appendTerminal(toolAgent, `SKILL> Summarize news`, "info");
+                      try {
+                        const r = await fetch("/api/chat/stream", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            agentId: toolAgent,
+                            agentName: a?.name,
+                            agentRole: a?.role,
+                            intent: "summarize_news",
+                            message: msg,
+                            history: [],
+                          }),
+                        });
+                        if (!r.ok || !r.body) {
+                          appendTerminal(toolAgent, `Summarize failed (${r.status})`, "warning");
+                          return;
+                        }
+                        const reader = r.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buf = "", acc = "", lastFlush = 0;
+                        const flush = (force = false) => {
+                          const delta = acc.slice(lastFlush);
+                          if (!delta) return;
+                          if (!force && delta.length < 60 && !delta.includes("\n")) return;
+                          lastFlush = acc.length;
+                          appendTerminal(toolAgent, delta.replace(/\s+/g, " ").trim(), "output");
+                        };
+                        while (true) {
+                          const { value, done } = await reader.read();
+                          if (done) break;
+                          buf += decoder.decode(value, { stream: true });
+                          let idx;
+                          while ((idx = buf.indexOf("\n\n")) !== -1) {
+                            const frame = buf.slice(0, idx);
+                            buf = buf.slice(idx + 2);
+                            const lines = frame.split("\n").map(l => l.trimEnd());
+                            for (const line of lines) {
+                              if (!line.startsWith("data:")) continue;
+                              const data = line.slice(5).trim();
+                              if (!data || data === "[DONE]") continue;
+                              let parsed;
+                              try { parsed = JSON.parse(data); } catch { parsed = null; }
+                              const delta = parsed?.choices?.[0]?.delta?.content;
+                              if (typeof delta === "string" && delta.length) {
+                                acc += delta;
+                                flush(false);
+                              }
+                            }
+                          }
+                        }
+                        flush(true);
+                      } catch (e) {
+                        appendTerminal(toolAgent, `Summarize error: ${e?.message || String(e)}`, "warning");
+                      }
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999,
+                      border: "1px solid #2a2520",
+                      background: "rgba(10,10,15,0.9)",
+                      color: "#00d1ff",
+                      fontSize: 10, fontFamily: "'Courier New', monospace",
+                      cursor: toolBusy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Summarize news
+                  </button>
+
+                  <button
+                    disabled={toolBusy}
+                    onClick={() => {
+                      setToolName("wallet_inspect");
+                      setToolAction("");
+                      setToolArgsText(JSON.stringify({ address: "YOUR_WALLET_HERE" }, null, 2));
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999,
+                      border: "1px solid #2a2520",
+                      background: "rgba(10,10,15,0.9)",
+                      color: "#ffaa22",
+                      fontSize: 10, fontFamily: "'Courier New', monospace",
+                      cursor: toolBusy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Check wallet (configure)
+                  </button>
+
+                  <button
+                    disabled={toolBusy}
+                    onClick={() => {
+                      setToolName("strategy_backtest");
+                      setToolAction("run");
+                      setToolArgsText(JSON.stringify({ symbol: "SOL/USDC", windowDays: 7 }, null, 2));
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999,
+                      border: "1px solid #2a2520",
+                      background: "rgba(10,10,15,0.9)",
+                      color: "#ff6b6b",
+                      fontSize: 10, fontFamily: "'Courier New', monospace",
+                      cursor: toolBusy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Run backtest (preset)
+                  </button>
+
+                  <button
+                    disabled={toolBusy}
+                    onClick={async () => {
+                      const a = AGENTS.find(x => x.id === toolAgent);
+                      const msg = "Draft a short markdown report summarizing today’s activity and key opportunities.";
+                      appendTerminal(toolAgent, `SKILL> Draft report`, "info");
+                      try {
+                        const r = await fetch("/api/chat/stream", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            agentId: toolAgent,
+                            agentName: a?.name,
+                            agentRole: a?.role,
+                            intent: "draft_report",
+                            message: msg,
+                            history: [],
+                          }),
+                        });
+                        if (!r.ok || !r.body) {
+                          appendTerminal(toolAgent, `Report failed (${r.status})`, "warning");
+                          return;
+                        }
+                        const reader = r.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buf = "", acc = "", lastFlush = 0;
+                        const flush = (force = false) => {
+                          const delta = acc.slice(lastFlush);
+                          if (!delta) return;
+                          if (!force && delta.length < 80 && !delta.includes("\n")) return;
+                          lastFlush = acc.length;
+                          appendTerminal(toolAgent, delta.replace(/\s+/g, " ").trim(), "output");
+                        };
+                        while (true) {
+                          const { value, done } = await reader.read();
+                          if (done) break;
+                          buf += decoder.decode(value, { stream: true });
+                          let idx;
+                          while ((idx = buf.indexOf("\n\n")) !== -1) {
+                            const frame = buf.slice(0, idx);
+                            buf = buf.slice(idx + 2);
+                            const lines = frame.split("\n").map(l => l.trimEnd());
+                            for (const line of lines) {
+                              if (!line.startsWith("data:")) continue;
+                              const data = line.slice(5).trim();
+                              if (!data || data === "[DONE]") continue;
+                              let parsed;
+                              try { parsed = JSON.parse(data); } catch { parsed = null; }
+                              const delta = parsed?.choices?.[0]?.delta?.content;
+                              if (typeof delta === "string" && delta.length) {
+                                acc += delta;
+                                flush(false);
+                              }
+                            }
+                          }
+                        }
+                        flush(true);
+                      } catch (e) {
+                        appendTerminal(toolAgent, `Report error: ${e?.message || String(e)}`, "warning");
+                      }
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999,
+                      border: "1px solid #2a2520",
+                      background: "rgba(10,10,15,0.9)",
+                      color: "#e0e0e8",
+                      fontSize: 10, fontFamily: "'Courier New', monospace",
+                      cursor: toolBusy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    Draft report
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>Agent</div>
+                  <select value={toolAgent} onChange={(e) => setToolAgent(e.target.value)} style={{
+                    width: "100%", padding: "8px 10px", borderRadius: 10,
+                    background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                    border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                  }}>
+                    {AGENTS.map(a => <option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
+                  </select>
+
+                  <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>Tool name</div>
+                  <input value={toolName} onChange={(e) => setToolName(e.target.value)} placeholder="e.g. sessions_list" style={{
+                    width: "100%", padding: "8px 10px", borderRadius: 10,
+                    background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                    border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                  }} />
+
+                  <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>Action</div>
+                  <input value={toolAction} onChange={(e) => setToolAction(e.target.value)} placeholder="optional (e.g. json)" style={{
+                    width: "100%", padding: "8px 10px", borderRadius: 10,
+                    background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                    border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                  }} />
+
+                  <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace", alignSelf: "start", paddingTop: 6 }}>Args (JSON)</div>
+                  <textarea value={toolArgsText} onChange={(e) => setToolArgsText(e.target.value)} rows={5} style={{
+                    width: "100%", padding: "10px 10px", borderRadius: 12,
+                    background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                    border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12,
+                    resize: "vertical"
+                  }} />
+                </div>
+
+                <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "center" }}>
+                  <button disabled={toolBusy} onClick={invokeTool} style={{
+                    padding: "10px 12px", borderRadius: 12,
+                    background: toolBusy ? "rgba(200,160,80,0.25)" : "#c8a050",
+                    color: "#0a0a0f", border: "none", cursor: toolBusy ? "not-allowed" : "pointer",
+                    fontWeight: 800, letterSpacing: 0.6
+                  }}>
+                    {toolBusy ? "Invoking…" : "Invoke tool"}
+                  </button>
+                  <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace", lineHeight: 1.5 }}>
+                    This calls OpenClaw `POST /tools/invoke` and prints results into the agent’s terminal.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS MODAL */}
+      {settingsOpen && (
+        <div onClick={() => setSettingsOpen(false)} style={{
+          position: "fixed", inset: 0, zIndex: 220,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: 760, maxWidth: "calc(100vw - 40px)", height: 560, maxHeight: "calc(100vh - 60px)",
+            background: "rgba(10,10,15,0.95)",
+            border: "2px solid rgba(200,160,80,0.25)",
+            borderRadius: 16, overflow: "hidden",
+            boxShadow: "0 0 40px rgba(200,160,80,0.12)",
+            display: "flex", flexDirection: "column"
+          }}>
+            <div style={{
+              padding: "14px 18px", display: "flex", alignItems: "center", gap: 12,
+              background: "rgba(200,160,80,0.08)", borderBottom: "1px solid rgba(200,160,80,0.2)"
+            }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(200,160,80,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c8a050" strokeWidth="1.8">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a7.8 7.8 0 0 0 .1-1l2-1.5-2-3.5-2.4.7a7.2 7.2 0 0 0-1.7-1l-.4-2.5H10l-.4 2.5a7.2 7.2 0 0 0-1.7 1l-2.4-.7-2 3.5 2 1.5a7.8 7.8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-.7a7.2 7.2 0 0 0 1.7 1l.4 2.5h4.1l.4-2.5a7.2 7.2 0 0 0 1.7-1l2.4.7 2-3.5-2-1.5Z"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#e0e0e8", letterSpacing: 0.4 }}>Settings</div>
+                <div style={{ fontSize: 11, color: "#6a6055", marginTop: 2, fontFamily: "'Courier New', monospace" }}>
+                  Map MyClaw3D agents to OpenClaw agent IDs + choose model per agent.
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 10, color: serverHealth?.hasToken ? "#14f195" : "#ffaa22", fontFamily: "'Courier New', monospace" }}>
+                  {serverHealth?.hasToken ? "CONNECTED" : "NO TOKEN"}
+                </div>
+                <button onClick={() => { refreshAgentSettings(); refreshHealth(); }} style={{
+                  padding: "6px 10px", borderRadius: 10, fontSize: 10, fontWeight: 800,
+                  background: "transparent", color: "#00d1ff", border: "1px solid #2a2520",
+                  cursor: "pointer", fontFamily: "'Courier New', monospace"
+                }}>Refresh</button>
+                <button onClick={async () => {
+                  try {
+                    const r = await fetch("/api/agent-settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(agentSettings || {}) });
+                    const json = await r.json().catch(() => null);
+                    if (r.ok && json?.ok) {
+                      setAgentSettings(json.settings || {});
+                      setActivityLog(prev => [{ time: timeStr(), hl: "MYCLAW3D", text: "settings saved" }, ...prev].slice(0, 50));
+                    }
+                  } catch { /* ignore */ }
+                }} style={{
+                  padding: "6px 10px", borderRadius: 10, fontSize: 10, fontWeight: 900,
+                  background: "#c8a050", color: "#0a0a0f", border: "none",
+                  cursor: "pointer", fontFamily: "'Courier New', monospace"
+                }}>Save</button>
+                <div onClick={() => setSettingsOpen(false)} style={{
+                  width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRadius: 8, cursor: "pointer", color: "#6a6055", fontSize: 18, border: "1px solid #2a2520"
+                }}>×</div>
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+              <div style={{ padding: 12, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 10 }}>Agent ↔ OpenClaw 1:1 mapping</div>
+                <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr 90px 120px", gap: 8, alignItems: "center", fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace", marginBottom: 8 }}>
+                  <div>MyClaw3D agent</div>
+                  <div>OpenClaw agent ID</div>
+                  <div>Model</div>
+                  <div>Test</div>
+                  <div style={{ textAlign: "right" }}>Status</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {AGENTS.map(a => {
+                    const s = agentSettings?.[a.id] || {};
+                    const connected = Boolean(serverHealth?.hasToken);
+                    const t = agentTest?.[a.id] || {};
+                    return (
+                      <div key={a.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr 90px 120px", gap: 8, alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 999, background: hexToCSS(a.color) }} />
+                          <div style={{ fontSize: 11, fontWeight: 900, color: "#e0e0e8", fontFamily: "'Courier New', monospace" }}>{a.name}</div>
+                        </div>
+                        <input value={s.openclawAgentId || ""} onChange={(e) => {
+                          const v = e.target.value;
+                          setAgentSettings(prev => ({ ...(prev || {}), [a.id]: { ...(prev?.[a.id] || {}), openclawAgentId: v } }));
+                        }} placeholder="e.g. main / alpha-workspace / trader-01" style={{
+                          width: "100%", padding: "8px 10px", borderRadius: 10,
+                          background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                          border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                        }} />
+                        <input value={s.model || ""} onChange={(e) => {
+                          const v = e.target.value;
+                          setAgentSettings(prev => ({ ...(prev || {}), [a.id]: { ...(prev?.[a.id] || {}), model: v } }));
+                        }} placeholder="openclaw (default) / other model id" style={{
+                          width: "100%", padding: "8px 10px", borderRadius: 10,
+                          background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                          border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                        }} />
+                        <button disabled={!connected || t.busy} onClick={async () => {
+                          setAgentTest(prev => ({ ...(prev || {}), [a.id]: { busy: true, ok: null, ms: null, msg: "" } }));
+                          try {
+                            const r = await fetch("/api/agent-settings/test", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                agentId: a.id,
+                                openclawAgentId: (s.openclawAgentId || "").trim() || undefined,
+                                model: (s.model || "").trim() || undefined,
+                              }),
+                            });
+                            const json = await r.json().catch(() => null);
+                            if (!r.ok || !json?.ok) {
+                              const m = json?.error?.message || json?.error?.type || `HTTP ${r.status}`;
+                              setAgentTest(prev => ({ ...(prev || {}), [a.id]: { busy: false, ok: false, ms: json?.ms || null, msg: m } }));
+                            } else {
+                              setAgentTest(prev => ({ ...(prev || {}), [a.id]: { busy: false, ok: true, ms: json.ms, msg: (json.text || "").trim().slice(0, 60) } }));
+                            }
+                          } catch (e) {
+                            setAgentTest(prev => ({ ...(prev || {}), [a.id]: { busy: false, ok: false, ms: null, msg: e?.message || String(e) } }));
+                          }
+                        }} style={{
+                          width: "100%",
+                          padding: "8px 10px", borderRadius: 10,
+                          background: (!connected || t.busy) ? "rgba(58,53,48,0.35)" : "rgba(10,10,15,0.9)",
+                          color: connected ? "#00d1ff" : "#4a4540",
+                          border: "1px solid #2a2520",
+                          cursor: (!connected || t.busy) ? "not-allowed" : "pointer",
+                          fontFamily: "'Courier New', monospace", fontSize: 11, fontWeight: 900
+                        }}>
+                          {t.busy ? "…" : "Test"}
+                        </button>
+                        <div style={{ textAlign: "right", fontSize: 10, fontFamily: "'Courier New', monospace", color: connected ? "#14f195" : "#ffaa22" }}>
+                          {connected ? (
+                            t.ok == null ? "server ok" : t.ok ? `OK ${t.ms}ms` : `ERR${t.ms ? ` ${t.ms}ms` : ""}`
+                          ) : "token missing"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {Object.keys(agentTest || {}).some(k => agentTest[k]?.msg) && (
+                  <div style={{ marginTop: 10, padding: 10, borderRadius: 12, border: "1px solid #2a2520", background: "rgba(10,10,15,0.55)" }}>
+                    <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace", marginBottom: 6 }}>Latest test output</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {AGENTS.map(a => {
+                        const t = agentTest?.[a.id];
+                        if (!t?.msg) return null;
+                        return (
+                          <div key={a.id} style={{ fontSize: 10, color: t.ok ? "#14f195" : "#ffaa22", fontFamily: "'Courier New', monospace" }}>
+                            {a.name}: {t.msg}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div style={{ marginTop: 10, fontSize: 10, color: "#4a4540", fontFamily: "'Courier New', monospace", lineHeight: 1.5 }}>
+                  Tip: Leave fields blank to use server defaults. These settings are stored on the local server in <b>server/.data/agent-settings.json</b>.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TASKS & NOTES MODAL */}
+      {tasksOpen && (
+        <div onClick={() => setTasksOpen(false)} style={{
+          position: "fixed", inset: 0, zIndex: 220,
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: 700, maxWidth: "calc(100vw - 40px)", height: 520, maxHeight: "calc(100vh - 60px)",
+            background: "rgba(10,10,15,0.95)",
+            border: "2px solid rgba(20,241,149,0.25)",
+            borderRadius: 16, overflow: "hidden",
+            boxShadow: "0 0 40px rgba(20,241,149,0.12)",
+            display: "flex", flexDirection: "column"
+          }}>
+            <div style={{
+              padding: "14px 18px", display: "flex", alignItems: "center", gap: 12,
+              background: "rgba(20,241,149,0.08)", borderBottom: "1px solid rgba(20,241,149,0.2)"
+            }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: "rgba(20,241,149,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#14f195" strokeWidth="1.8">
+                  <rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="9" x2="17" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#e0e0e8", letterSpacing: 0.4 }}>Tasks & Notes</div>
+                <div style={{ fontSize: 11, color: "#6a6055", marginTop: 2, fontFamily: "'Courier New', monospace" }}>
+                  Run tasks, stream logs, and capture artifacts into the File Cabinet.
+                </div>
+              </div>
+              <div onClick={() => setTasksOpen(false)} style={{
+                width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                borderRadius: 8, cursor: "pointer", color: "#6a6055", fontSize: 18, border: "1px solid #2a2520"
+              }}>×</div>
+            </div>
+
+            <div style={{ flex: 1, padding: 16, display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(0, 1.2fr)", gap: 12 }}>
+              {/* Left: tasks */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ padding: 12, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(10,10,15,0.75)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#e0e0e8" }}>New task</div>
+                    <div style={{ flex: 1 }} />
+                    <div style={{ fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>
+                      {tasks.filter(t => t.status === "running").length} running
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "150px 1fr auto", gap: 8, alignItems: "center" }}>
+                    <select value={taskAgent} onChange={(e) => setTaskAgent(e.target.value)} style={{
+                      width: "100%", padding: "8px 10px", borderRadius: 10,
+                      background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                      border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                    }}>
+                      <option value="">Random agent</option>
+                      {AGENTS.map(a => <option key={a.id} value={a.id}>{a.name} ({a.role})</option>)}
+                    </select>
+                    <input value={taskInput} onChange={(e) => setTaskInput(e.target.value)} placeholder="Describe a task…" style={{
+                      width: "100%", padding: "8px 10px", borderRadius: 10,
+                      background: "rgba(10,10,15,0.9)", color: "#e0e0e8",
+                      border: "1px solid #2a2520", outline: "none", fontFamily: "'Courier New', monospace", fontSize: 12
+                    }} />
+                    <button onClick={assignTask} style={{
+                      padding: "9px 12px", borderRadius: 12,
+                      background: "#14f195", color: "#0a0a0f", border: "none",
+                      cursor: "pointer", fontWeight: 900
+                    }}>Run</button>
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, padding: 12, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(10,10,15,0.75)", minHeight: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#e0e0e8", marginBottom: 6 }}>Recent tasks</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "100%", overflowY: "auto" }}>
+                    {tasks.length === 0 && (
+                      <div style={{ fontSize: 11, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>
+                        No tasks yet. Create one above to get started.
+                      </div>
+                    )}
+                    {tasks.slice(0, 10).map((t) => (
+                      <div key={t.id} style={{
+                        padding: 10, borderRadius: 12,
+                        border: "1px solid #2a2520",
+                        background: "rgba(30,28,24,0.55)"
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#e0e0e8" }}>{t.agent}</div>
+                          <div style={{
+                            fontSize: 9, fontWeight: 800, letterSpacing: 1,
+                            color:
+                              t.status === "running" ? "#14f195" :
+                              t.status === "done" ? "#00d1ff" :
+                              t.status === "failed" ? "#ff6b6b" :
+                              t.status === "cancelled" ? "#ffaa22" : "#6a6055"
+                          }}>
+                            {String(t.status || "").toUpperCase()}
+                          </div>
+                          <div style={{ flex: 1 }} />
+                          {t.status === "running" && (
+                            <button onClick={() => cancelTask(t.id)} style={{
+                              padding: "6px 10px", borderRadius: 999,
+                              border: "1px solid #3a3530",
+                              background: "rgba(10,10,15,0.9)", color: "#ffaa22",
+                              cursor: "pointer", fontSize: 10, fontFamily: "'Courier New', monospace"
+                            }}>Cancel</button>
+                          )}
+                          {(t.status === "failed" || t.status === "cancelled") && (
+                            <button onClick={() => runTask({ agentId: t.agentId, desc: t.desc, retryOf: t.id })} style={{
+                              padding: "6px 10px", borderRadius: 999,
+                              border: "1px solid #3a3530",
+                              background: "rgba(10,10,15,0.9)", color: "#14f195",
+                              cursor: "pointer", fontSize: 10, fontFamily: "'Courier New', monospace"
+                            }}>Retry</button>
+                          )}
+                          {t.status === "done" && (
+                            <>
+                              <button onClick={() => promoteTaskToReport(t)} style={{
+                                padding: "6px 10px", borderRadius: 999,
+                                border: "1px solid #3a3530",
+                                background: "rgba(10,10,15,0.9)", color: "#c8a050",
+                                cursor: "pointer", fontSize: 10, fontFamily: "'Courier New', monospace", marginRight: 4
+                              }}>Promote</button>
+                              <button onClick={() => saveArtifactFromTask(t)} style={{
+                                padding: "6px 10px", borderRadius: 999,
+                                border: "1px solid #3a3530",
+                                background: "rgba(10,10,15,0.9)", color: "#b9b2aa",
+                                cursor: "pointer", fontSize: 10, fontFamily: "'Courier New', monospace"
+                              }}>Save note</button>
+                            </>
+                          )}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 11, color: "#cfc9c2", lineHeight: 1.5, fontFamily: "'Courier New', monospace" }}>
+                          {t.desc}
+                        </div>
+                        {(t.log?.length > 0) && (
+                          <pre style={{
+                            marginTop: 8,
+                            padding: 10,
+                            borderRadius: 10,
+                            border: "1px solid #2a2520",
+                            background: "rgba(6,10,6,0.7)",
+                            color: "#14f195",
+                            fontSize: 11,
+                            overflowX: "auto",
+                            whiteSpace: "pre-wrap"
+                          }}>
+                            {t.log.slice(-3).join("\n")}
+                          </pre>
+                        )}
+                        {t.status === "done" && t.result && (
+                          <div style={{ marginTop: 8, fontSize: 10, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>
+                            Result stored. Use Promote to save a report.
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: reports + file cabinet */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ padding: 12, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(10,10,15,0.75)", minHeight: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#e0e0e8", marginBottom: 8 }}>Reports</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 160, overflowY: "auto" }}>
+                    {reports.length === 0 && (
+                      <div style={{ fontSize: 11, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>
+                        No reports yet. Promote a completed task to create one.
+                      </div>
+                    )}
+                    {reports.slice(0, 5).map(r => (
+                      <div key={r.id} style={{ padding: 10, borderRadius: 12, border: "1px solid #2a2520", background: "rgba(30,28,24,0.55)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#c8a050", flex: 1 }}>{r.title}</div>
+                          <button onClick={() => saveArtifactFromReport(r)} style={{
+                            padding: "4px 8px", borderRadius: 999,
+                            border: "1px solid #3a3530",
+                            background: "rgba(10,10,15,0.9)", color: "#b9b2aa",
+                            cursor: "pointer", fontSize: 9, fontFamily: "'Courier New', monospace"
+                          }}>Save note</button>
+                        </div>
+                        <pre style={{ marginTop: 6, whiteSpace: "pre-wrap", color: "#cfc9c2", fontSize: 11, fontFamily: "'Courier New', monospace" }}>
+                          {r.md.slice(0, 420)}{r.md.length > 420 ? "\n…" : ""}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, padding: 12, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(10,10,15,0.75)", minHeight: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#e0e0e8", marginBottom: 8 }}>File Cabinet (Notes)</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "100%", overflowY: "auto" }}>
+                    {artifacts.length === 0 && (
+                      <div style={{ fontSize: 11, color: "#6a6055", fontFamily: "'Courier New', monospace" }}>
+                        No notes yet. Save from a task or report.
+                      </div>
+                    )}
+                    {artifacts.slice(0, 8).map(a => (
+                      <div key={a.id} style={{ padding: 10, borderRadius: 12, border: "1px solid #2a2520", background: "rgba(30,28,24,0.55)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <div style={{ fontSize: 11, fontWeight: 800, color: "#c8a050", flex: 1 }}>{a.title}</div>
+                          <button onClick={() => pushArtifactToMemory(a)} style={{
+                            padding: "4px 8px", borderRadius: 999,
+                            border: "1px solid #3a3530",
+                            background: a.pushed ? "rgba(20,241,149,0.18)" : "rgba(10,10,15,0.9)",
+                            color: a.pushed ? "#14f195" : "#b9b2aa",
+                            cursor: "pointer", fontSize: 9, fontFamily: "'Courier New', monospace"
+                          }}>{a.pushed ? "Pushed" : "Push to memory"}</button>
+                        </div>
+                        <pre style={{ whiteSpace: "pre-wrap", color: "#cfc9c2", fontSize: 11, fontFamily: "'Courier New', monospace" }}>
+                          {a.content.slice(0, 360)}{a.content.length > 360 ? "\n…" : ""}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Live terminal component for monitor modal
-function MonitorTerminal({ agentId, agent, messages, agents, agentTargets }) {
-  const [lines, setLines] = useState([]);
+function MonitorTerminal({ agentId, agent, terminalLines, terminalTick, agentTargets, buffsRef, buffsTick }) {
   const bottomRef = useRef(null);
   const [isAtDesk, setIsAtDesk] = useState(false);
 
@@ -3348,37 +5748,37 @@ function MonitorTerminal({ agentId, agent, messages, agents, agentTargets }) {
     return () => clearInterval(check);
   }, [agentId, agentTargets]);
 
-  // Only add terminal lines when agent is at desk
-  useEffect(() => {
-    if (!isAtDesk) return;
-    // Boot message when agent sits down
-    if (lines.length === 0) {
-      setLines([
-        { text: `[${agent.name.toUpperCase()}] Terminal initialized`, type: "system" },
-        { text: `Connected to solana-mainnet-beta`, type: "system" },
-        { text: `Agent status: ONLINE`, type: "system" },
-        { text: `---`, type: "divider" },
-      ]);
-    }
-    const interval = setInterval(() => {
-      const msg = messages[Math.floor(Math.random() * messages.length)];
-      const now = new Date();
-      const ts = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}`;
-      const types = ["output", "output", "output", "success", "info", "warning"];
-      const type = types[Math.floor(Math.random() * types.length)];
-      setLines(prev => [...prev.slice(-40), { text: msg, type, ts }]);
-    }, 1500 + Math.random() * 2000);
-    return () => clearInterval(interval);
-  }, [isAtDesk, messages, agent.name]);
+  const bootLines = [
+    { text: `[${agent.name.toUpperCase()}] Terminal initialized`, type: "system" },
+    { text: `Connected to solana-mainnet-beta`, type: "system" },
+    { text: `Agent status: ONLINE`, type: "system" },
+    { text: `---`, type: "divider" },
+  ];
 
-  // Clear lines when agent leaves desk
+  const [buffLine, setBuffLine] = useState("");
   useEffect(() => {
-    if (!isAtDesk) {
-      setLines([]);
+    const now = Date.now();
+    const b = buffsRef?.current?.[agentId] || {};
+    const active = Object.values(b).filter(v => v && typeof v.until === "number" && v.until > now);
+    if (!active.length) {
+      setBuffLine("");
+      return;
     }
-  }, [isAtDesk]);
+    const parts = active
+      .sort((a, b) => (b.until || 0) - (a.until || 0))
+      .slice(0, 3)
+      .map(v => {
+        const left = Math.max(0, Math.ceil((v.until - now) / 1000));
+        const name = String(v.label || v.key || "buff");
+        return `${name} ${left}s`;
+      });
+    setBuffLine(`BUFFS> ${parts.join(" · ")}`);
+  }, [agentId, buffsRef, buffsTick]);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [lines]);
+  const displayLines = isAtDesk ? [...bootLines, ...(terminalLines || []).slice(-120)] : [];
+  const finalLines = isAtDesk ? (buffLine ? [...displayLines, { text: "---", type: "divider" }, { text: buffLine, type: "info" }] : displayLines) : [];
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [finalLines.length, terminalTick, isAtDesk, buffLine]);
 
   const colors = {
     system: "#6a6055",
@@ -3404,7 +5804,7 @@ function MonitorTerminal({ agentId, agent, messages, agents, agentTargets }) {
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px", background: "#060a06" }}>
-      {lines.map((line, i) => (
+      {finalLines.map((line, i) => (
         <div key={i} style={{
           display: "flex", gap: 10, marginBottom: 4,
           fontFamily: "'Courier New', monospace", fontSize: 12, lineHeight: 1.6
