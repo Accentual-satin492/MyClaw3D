@@ -1,87 +1,127 @@
-# MyClaw3D 🏢
+# MyClaw3D
 
-A 3D isometric AI agent world built with React + Three.js. Watch autonomous AI agents work, play, and interact in a fully interactive environment.
+MyClaw3D is an isometric 3D agent workspace built with React + Three.js.
+It combines local in-world animations (movement, desk/sofa/sports activities) with real AI chat through an OpenClaw gateway.
 
 ![MyClaw3D](https://img.shields.io/badge/Built%20with-Three.js-black?style=flat&logo=threedotjs)
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react)
-![Solana](https://img.shields.io/badge/Solana-Native-14f195?style=flat)
+![OpenClaw](https://img.shields.io/badge/OpenClaw-Connected-c8a050?style=flat)
 
-## Features
+## What Changed Recently
 
-### 🏗️ Two-Room Office
-- **Main Office** — 6 desks with live terminal monitors, meeting table, lounge area with couches, server racks
-- **Sports Room** — Pool/billiard table and ping pong table with animated balls
+- Added more world systems and UX panels: docs modal, tools modal, settings modal, inbox/history/playbooks panels.
+- Added local server APIs for events, inbox, playbooks, and per-agent routing settings.
+- Added OpenClaw-backed agent chat flow through a local API proxy.
+- Added server-side persistence under `server/.data` for playbooks, events, inbox, and agent settings.
+- Added per-agent OpenClaw mapping + model selection from the settings UI.
 
-### 🤖 6 Autonomous AI Agents
-| Agent | Role | Color |
-|-------|------|-------|
-| Alpha | Trader | Green |
-| Bravo | DeFi Strategist | Purple |
-| Charlie | Data Analyst | Cyan |
-| Delta | NFT Scout | Red |
-| Echo | Tx Executor | Orange |
-| Foxtrot | Market Monitor | Pink |
+## Core Features
 
-### 🎮 Agent Behaviors
-Agents autonomously cycle between activities:
-- **Working at desk** — sit with live terminal showing role-specific output
-- **Relaxing on sofa** — chill in the lounge area
-- **Playing ping pong** — invite a partner, animated paddle swings
-- **Playing billiards** — invite a partner, cue aiming animation
-- **Walking around** — navigate between rooms through doorway
+- Interactive isometric world with multiple rooms and animated agents.
+- 6 role-based agents with local behaviors and AI chat.
+- Live desk terminals, wall chart screens, monitor modal.
+- HQ control surfaces: Inbox, History, Playbooks, Observe, Tools, Settings.
+- OpenClaw integration for streamed chat and tool invocation.
 
-### 💬 Chat Commands
-Click an agent's chat to command them:
-- `"go to desk"` / `"work"` — send to their workstation
-- `"relax"` / `"sofa"` / `"chill"` — send to couch
-- `"play ping pong"` — invite a partner for table tennis
-- `"play pool"` / `"billiards"` — invite a partner for billiards
-- `"stand up"` / `"stop"` — interrupt any activity
+## Chat Command Examples
 
-### 📊 Live Displays
-- **Desk monitors** — per-agent terminal output (active only when agent is seated)
-- **Wall screens** — live animated trading charts (candlestick, line, volume)
-- **Monitor modal** — click any desk screen to see full-size terminal view
+Command support depends on the current chat parser in `src/components/ClawHQ.jsx`, but typical local behavior commands include:
 
-### 🎵 Ambient Music
-Procedurally generated lo-fi beats with Tone.js (toggle with volume button)
+- go to desk / work
+- relax / sofa / chill
+- play ping pong
+- play pool / billiards
+- stand up / stop
 
-### 📷 Camera Controls
-- **Left-drag** — pan
-- **Right-drag** — rotate + pitch
-- **Scroll** — zoom
-- **Click agent** — follow mode (zoom in)
+## Proper OpenClaw Connection Setup
 
-## Getting Started
+This app has two local processes:
+
+1. Frontend (Vite) on port 3000
+2. Local API server (Express) on port 8787
+
+The frontend calls `/api/*`, and Vite proxies that to the local API server, which then calls OpenClaw.
+
+### 1) Start OpenClaw Gateway
+
+Run your OpenClaw Gateway so that the OpenAI-compatible endpoint is reachable (default expected base URL):
+
+- `http://127.0.0.1:18789`
+
+### 2) Set Required Environment Variables (PowerShell)
+
+In the terminal where you will run the local API server:
+
+```powershell
+$env:OPENCLAW_GATEWAY_TOKEN="your_gateway_token_here"
+$env:OPENCLAW_BASE_URL="http://127.0.0.1:18789"
+```
+
+Optional routing defaults:
+
+```powershell
+$env:OPENCLAW_AGENT_ID="main"
+# Optional JSON map string for agent routing
+# $env:OPENCLAW_AGENT_MAP_JSON='{"alpha":"agent-a","bravo":"agent-b"}'
+```
+
+### 3) Run Local API Server
 
 ```bash
-# Install dependencies
-npm install
+npm run server
+```
 
-# Run dev server
+### 4) Run Frontend Dev Server (new terminal)
+
+```bash
 npm run dev
+```
 
-# Build for production
+### 5) Verify Health
+
+Open this endpoint in your browser:
+
+- `http://127.0.0.1:8787/api/health`
+
+You should see:
+
+- `ok: true`
+- `hasToken: true`
+
+If `hasToken` is false, your server terminal does not have `OPENCLAW_GATEWAY_TOKEN` set.
+
+## Local Development
+
+```bash
+npm install
 npm run build
 ```
 
-## Tech Stack
-- **React 18** — UI components and state
-- **Three.js** — 3D rendering, voxel agents, isometric camera
-- **Tone.js** — procedural ambient music
-- **Vite** — build tooling
-
 ## Architecture
-```
+
+```text
 src/
-  main.jsx          — Entry point
+  main.jsx
   components/
-    ClawHQ.jsx      — Main component (scene, agents, UI, logic)
+    ClawHQ.jsx
+
+server/
+  index.mjs
+  .data/
+    events.json
+    inbox.json
+    playbooks.json
+    agent-settings.json
 ```
+
+## Tech Stack
+
+- React 18
+- Three.js
+- Tone.js
+- Vite
+- Express
 
 ## License
+
 MIT
-
----
-
-Built by [@solgoodmanx_](https://x.com/solgoodmanx_) | [0xMer199](https://github.com/0xMer199)

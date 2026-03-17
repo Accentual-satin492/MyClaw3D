@@ -4973,7 +4973,7 @@ export default function ClawHQ() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 800, color: "#e0e0e8", letterSpacing: 0.4 }}>Agent Guide</div>
                 <div style={{ fontSize: 11, color: "#6a6055", marginTop: 2, fontFamily: "'Courier New', monospace" }}>
-                  How to command agents, read terminals, and connect to OpenClaw.
+                  What changed, how to use agents, and how to connect OpenClaw correctly.
                 </div>
               </div>
               <div onClick={() => setDocsOpen(false)} style={{
@@ -4984,6 +4984,15 @@ export default function ClawHQ() {
 
             <div style={{ flex: 1, overflowY: "auto", padding: 18 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>What changed recently</div>
+                  <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
+                    - New local API server with persistent data for history, inbox, playbooks, and settings.<br />
+                    - Tools modal and Settings modal for OpenClaw routing and model control.<br />
+                    - HQ tabs wired to live API data refresh cycles.<br />
+                    - Chat + terminal flows now route through local API and OpenClaw gateway.
+                  </div>
+                </div>
                 <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>Chatting with agents</div>
                   <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
@@ -5015,11 +5024,14 @@ export default function ClawHQ() {
                 <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>OpenClaw connection (required)</div>
                   <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
-                    This app routes AI chat through your OpenClaw Gateway’s OpenAI-compatible endpoint
-                    (<span style={{ color: "#00d1ff" }}>/v1/chat/completions</span>).<br />
-                    - Start OpenClaw Gateway<br />
-                    - Set <b>OPENCLAW_GATEWAY_TOKEN</b> for the local server<br />
-                    - Run <b>npm run server</b> and <b>npm run dev</b>
+                    Frontend talks to local API (<b>/api</b>), local API talks to OpenClaw gateway.<br />
+                    - Start OpenClaw gateway (default base URL: <b>http://127.0.0.1:18789</b>)<br />
+                    - In server terminal set:<br />
+                    &nbsp;&nbsp;<b>$env:OPENCLAW_GATEWAY_TOKEN="..."</b><br />
+                    &nbsp;&nbsp;<b>$env:OPENCLAW_BASE_URL="http://127.0.0.1:18789"</b><br />
+                    - Run <b>npm run server</b> (port 8787)<br />
+                    - Run <b>npm run dev</b> (frontend on port 3000)<br />
+                    - Check <b>/api/health</b>: hasToken must be true
                   </div>
                 </div>
               </div>
@@ -5028,7 +5040,7 @@ export default function ClawHQ() {
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#e0e0e8", marginBottom: 8 }}>Tips</div>
                 <div style={{ fontSize: 11, lineHeight: 1.7, color: "#b9b2aa", fontFamily: "'Courier New', monospace" }}>
                   - If you see a “missing token” error, the server isn’t configured with <b>OPENCLAW_GATEWAY_TOKEN</b>.<br />
-                  - Want separate personalities? Update OpenClaw agent identities/workspaces and map each MyClaw3D agent to a different OpenClaw agent id later.<br />
+                  - You can map each MyClaw3D agent to a different OpenClaw agent id from <b>Settings</b>.<br />
                   - Use the map icon to open the floor map overlay.
                 </div>
               </div>
