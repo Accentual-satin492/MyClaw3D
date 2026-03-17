@@ -14,6 +14,7 @@ It combines local in-world animations (movement, desk/sofa/sports activities) wi
 - Added dedicated Docs, Tools, Settings, and Tasks & Notes modals.
 - Added local API server endpoints for chat, streaming chat, tool invocation, events, inbox, playbooks, and agent settings.
 - Added per-agent OpenClaw mapping + model routing, plus connection health checks.
+- Wired chat operator controls: per-agent model override, inline terminal output, and quick access to Tools/Settings.
 - Added server-side persistence under `server/.data` for playbooks, events, inbox, and agent settings.
 
 ## Core Features
@@ -21,6 +22,7 @@ It combines local in-world animations (movement, desk/sofa/sports activities) wi
 - Interactive isometric world with multiple rooms and animated agents.
 - 6 role-based agents with local behaviors and AI chat.
 - Live desk terminals, wall chart screens, monitor modal.
+- Chat panel operator controls: model override, show/hide terminal output, jump to tools, jump to agent settings.
 - HQ control surfaces: Inbox, History, Playbooks, Observe.
 - Operator tooling: Tools modal (quick skills + raw tool invoke), Settings modal (agent routing/model), Tasks & Notes modal (task runs + artifacts).
 - OpenClaw integration for streamed chat and tool invocation.

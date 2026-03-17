@@ -1,0 +1,874 @@
+[
+  {
+    "id": "inbox-1773717744272-60550",
+    "ts": 1773717744272,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717734767-44222",
+    "ts": 1773717734767,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717722770-7819",
+    "ts": 1773717722770,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717717771-51849",
+    "ts": 1773717717771,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717687612-40667",
+    "ts": 1773717687612,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717655104-34588",
+    "ts": 1773717655104,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717617605-53241",
+    "ts": 1773717617605,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717617604-29880",
+    "ts": 1773717617604,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717553979-62087",
+    "ts": 1773717553979,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717502372-63918",
+    "ts": 1773717502372,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717472865-61055",
+    "ts": 1773717472865,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717459374-86283",
+    "ts": 1773717459374,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717305861-54811",
+    "ts": 1773717305861,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717294364-85876",
+    "ts": 1773717294364,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717250861-13229",
+    "ts": 1773717250861,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773717229368-4218",
+    "ts": 1773717229368,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716887496-3753",
+    "ts": 1773716887496,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716868493-42772",
+    "ts": 1773716868493,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716694013-78388",
+    "ts": 1773716694013,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716691013-86112",
+    "ts": 1773716691013,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716684423-89736",
+    "ts": 1773716684423,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716671918-71173",
+    "ts": 1773716671918,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716669508-9992",
+    "ts": 1773716669508,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716668508-36404",
+    "ts": 1773716668508,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716664921-2097",
+    "ts": 1773716664921,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716661920-72425",
+    "ts": 1773716661920,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716651922-28189",
+    "ts": 1773716651922,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716634514-11636",
+    "ts": 1773716634514,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716253376-12016",
+    "ts": 1773716253376,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716243872-12851",
+    "ts": 1773716243872,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716190372-39303",
+    "ts": 1773716190372,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716177877-54010",
+    "ts": 1773716177877,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773716017375-38924",
+    "ts": 1773716017375,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715980872-90838",
+    "ts": 1773715980872,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715972857-93692",
+    "ts": 1773715972857,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715961874-33764",
+    "ts": 1773715961875,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715956364-82117",
+    "ts": 1773715956364,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715955859-96885",
+    "ts": 1773715955859,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715952367-77102",
+    "ts": 1773715952367,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715922883-42197",
+    "ts": 1773715922883,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715842558-70231",
+    "ts": 1773715842558,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715840553-89609",
+    "ts": 1773715840553,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715820561-45578",
+    "ts": 1773715820561,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715818056-89488",
+    "ts": 1773715818056,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715816557-5573",
+    "ts": 1773715816557,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715812053-23823",
+    "ts": 1773715812053,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715809564-64586",
+    "ts": 1773715809564,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715778057-19500",
+    "ts": 1773715778057,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715756410-49914",
+    "ts": 1773715756410,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715755411-46873",
+    "ts": 1773715755411,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715725426-13847",
+    "ts": 1773715725426,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715722913-18231",
+    "ts": 1773715722913,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715703428-13785",
+    "ts": 1773715703428,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715697915-12403",
+    "ts": 1773715697915,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715646188-76184",
+    "ts": 1773715646188,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715631694-86419",
+    "ts": 1773715631694,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715621683-35235",
+    "ts": 1773715621683,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715593690-62821",
+    "ts": 1773715593690,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715580111-9652",
+    "ts": 1773715580111,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715566608-80309",
+    "ts": 1773715566608,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715491109-1079",
+    "ts": 1773715491109,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715477606-32418",
+    "ts": 1773715477606,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715394614-86173",
+    "ts": 1773715394614,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715379106-1285",
+    "ts": 1773715379106,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715375615-26040",
+    "ts": 1773715375615,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715364614-66876",
+    "ts": 1773715364614,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715352117-86544",
+    "ts": 1773715352117,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715352116-47021",
+    "ts": 1773715352116,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715350110-70101",
+    "ts": 1773715350110,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715324608-97605",
+    "ts": 1773715324608,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715319607-28916",
+    "ts": 1773715319607,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715315607-64539",
+    "ts": 1773715315607,
+    "agentId": "delta",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715313111-86006",
+    "ts": 1773715313111,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715311607-61796",
+    "ts": 1773715311607,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715237111-8734",
+    "ts": 1773715237111,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715234107-40777",
+    "ts": 1773715234107,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715226111-31144",
+    "ts": 1773715226111,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715194114-76256",
+    "ts": 1773715194114,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715189111-67468",
+    "ts": 1773715189111,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715158608-27210",
+    "ts": 1773715158608,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715146106-58930",
+    "ts": 1773715146106,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715145611-27076",
+    "ts": 1773715145611,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715118611-77571",
+    "ts": 1773715118611,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715114106-84688",
+    "ts": 1773715114106,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773715005609-6882",
+    "ts": 1773715005609,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714970108-70150",
+    "ts": 1773714970108,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714964615-54768",
+    "ts": 1773714964615,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714897119-55017",
+    "ts": 1773714897119,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714894108-8260",
+    "ts": 1773714894108,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714865613-60997",
+    "ts": 1773714865613,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714861107-37124",
+    "ts": 1773714861107,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714827113-18606",
+    "ts": 1773714827113,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714825606-43177",
+    "ts": 1773714825606,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714820110-63931",
+    "ts": 1773714820110,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714811616-6322",
+    "ts": 1773714811616,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714736611-89816",
+    "ts": 1773714736611,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714736611-37540",
+    "ts": 1773714736611,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714675763-4582",
+    "ts": 1773714675763,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714650248-55992",
+    "ts": 1773714650248,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714649263-78224",
+    "ts": 1773714649263,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714591485-6631",
+    "ts": 1773714591486,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714575976-75651",
+    "ts": 1773714575976,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714573992-35948",
+    "ts": 1773714573992,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714571469-82499",
+    "ts": 1773714571469,
+    "agentId": "cipher",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714570994-22868",
+    "ts": 1773714570994,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714506445-45000",
+    "ts": 1773714506445,
+    "agentId": "bravo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714497939-53090",
+    "ts": 1773714497939,
+    "agentId": "alpha",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714343843-64485",
+    "ts": 1773714343843,
+    "agentId": "flux",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  },
+  {
+    "id": "inbox-1773714335880-98335",
+    "ts": 1773714335880,
+    "agentId": "echo",
+    "title": "Team Sync recap (sports room)",
+    "body": "Sync buff triggered, but recap generation failed.",
+    "status": "open"
+  }
+]

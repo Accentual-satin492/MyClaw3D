@@ -5560,7 +5560,11 @@ export default function ClawHQ() {
                   <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
                     - Open the chat panel, pick an agent, and type a message.<br />
                     - Normal messages go to the AI (OpenClaw) and stream back live.<br />
-                    - Replies also appear in the desk terminal output when the agent is at their desk.
+                  - Use the model dropdown to override the chat model per agent (or leave on Auto to use Settings/server defaults).<br />
+                  - Click <b>Show</b> to reveal inline terminal/tool output for the selected agent.<br />
+                  - Click <b>Tools</b> to open the Tools console scoped to the current agent.<br />
+                  - Click the chat header <b>cog</b> to jump straight to that agent’s Settings row.<br />
+                  - Replies also appear in the desk terminal output when the agent is at their desk.
                   </div>
                 </div>
                 <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
