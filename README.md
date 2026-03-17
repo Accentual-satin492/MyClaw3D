@@ -79,9 +79,6 @@ src/
     ClawHQ.jsx      — Main component (scene, agents, UI, logic)
 ```
 
-## Inspired By
-[Luke The Dev's OpenClaw Office](https://x.com/iamlukethedev)
-
 ## License
 MIT
 
