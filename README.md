@@ -7,6 +7,8 @@ It combines local in-world animations (movement, desk/sofa/sports activities) wi
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react)
 ![OpenClaw](https://img.shields.io/badge/OpenClaw-Connected-c8a050?style=flat)
 
+![Image](https://github.com/user-attachments/assets/615dc141-451a-4c75-9c9b-aa044e550ebb)
+
 ## What Changed Recently
 
 - Expanded the world with additional activity zones and richer movement/activity loops.
