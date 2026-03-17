@@ -9,18 +9,20 @@ It combines local in-world animations (movement, desk/sofa/sports activities) wi
 
 ## What Changed Recently
 
-- Added more world systems and UX panels: docs modal, tools modal, settings modal, inbox/history/playbooks panels.
-- Added local server APIs for events, inbox, playbooks, and per-agent routing settings.
-- Added OpenClaw-backed agent chat flow through a local API proxy.
+- Expanded the world with additional activity zones and richer movement/activity loops.
+- Added HQ operational surfaces: Inbox, History, Playbooks, Observe.
+- Added dedicated Docs, Tools, Settings, and Tasks & Notes modals.
+- Added local API server endpoints for chat, streaming chat, tool invocation, events, inbox, playbooks, and agent settings.
+- Added per-agent OpenClaw mapping + model routing, plus connection health checks.
 - Added server-side persistence under `server/.data` for playbooks, events, inbox, and agent settings.
-- Added per-agent OpenClaw mapping + model selection from the settings UI.
 
 ## Core Features
 
 - Interactive isometric world with multiple rooms and animated agents.
 - 6 role-based agents with local behaviors and AI chat.
 - Live desk terminals, wall chart screens, monitor modal.
-- HQ control surfaces: Inbox, History, Playbooks, Observe, Tools, Settings.
+- HQ control surfaces: Inbox, History, Playbooks, Observe.
+- Operator tooling: Tools modal (quick skills + raw tool invoke), Settings modal (agent routing/model), Tasks & Notes modal (task runs + artifacts).
 - OpenClaw integration for streamed chat and tool invocation.
 
 ## Chat Command Examples
@@ -29,9 +31,24 @@ Command support depends on the current chat parser in `src/components/ClawHQ.jsx
 
 - go to desk / work
 - relax / sofa / chill
+- cafeteria / cafe / coffee / snack / lunch
+- gym / workout / exercise
+- treadmill / elliptical / bike / chest press / bench press / squat rack / punching bag / kettlebell / dumbbell / barbell / trampoline
 - play ping pong
 - play pool / billiards
 - stand up / stop
+
+Normal conversational prompts are routed to OpenClaw and streamed back into chat + desk terminal views.
+
+## Dashboard & Ops Surfaces
+
+- Inbox: queued summaries and run outputs.
+- History: recent events and agent activity rollups.
+- Playbooks: recurring automation templates and active schedules.
+- Observe: live event feed with filters and per-agent stats.
+- Tools: one-click skills and raw OpenClaw `/tools/invoke` proxy calls.
+- Settings: per-agent OpenClaw agent ID + model mapping and connectivity test.
+- Tasks & Notes: run ad-hoc tasks and keep artifacts/reports in-app.
 
 ## Proper OpenClaw Connection Setup
 
@@ -113,6 +130,17 @@ server/
     playbooks.json
     agent-settings.json
 ```
+
+Key local API routes served by `server/index.mjs`:
+
+- `/api/health`
+- `/api/chat`
+- `/api/chat/stream`
+- `/api/tools/invoke`
+- `/api/events`
+- `/api/inbox`
+- `/api/playbooks`
+- `/api/agent-settings`
 
 ## Tech Stack
 

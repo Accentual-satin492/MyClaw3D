@@ -4987,10 +4987,10 @@ export default function ClawHQ() {
                 <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
                   <div style={{ fontSize: 12, fontWeight: 800, color: "#c8a050", marginBottom: 8 }}>What changed recently</div>
                   <div style={{ fontSize: 11, lineHeight: 1.6, color: "#cfc9c2", fontFamily: "'Courier New', monospace" }}>
-                    - New local API server with persistent data for history, inbox, playbooks, and settings.<br />
-                    - Tools modal and Settings modal for OpenClaw routing and model control.<br />
-                    - HQ tabs wired to live API data refresh cycles.<br />
-                    - Chat + terminal flows now route through local API and OpenClaw gateway.
+                    - Expanded HQ dashboard: Inbox, History, Playbooks, Observe.<br />
+                    - New operator surfaces: Tools, Settings, Tasks & Notes modals.<br />
+                    - Local API now persists events, inbox, playbooks, and agent mappings.<br />
+                    - Chat, streaming chat, and tool calls are routed through local API to OpenClaw.
                   </div>
                 </div>
                 <div style={{ padding: 14, borderRadius: 14, border: "1px solid #2a2520", background: "rgba(30,28,24,0.6)" }}>
@@ -5008,7 +5008,7 @@ export default function ClawHQ() {
                     - <b>go to desk</b>, <b>work</b><br />
                     - <b>relax</b>, <b>sofa</b><br />
                     - <b>cafeteria</b>, <b>coffee</b><br />
-                    - <b>gym</b> (or treadmill/bike/etc.)<br />
+                    - <b>gym</b> or equipment terms (<b>treadmill</b>, <b>bike</b>, <b>bench</b>, <b>dumbbell</b>, etc.)<br />
                     - <b>play ping pong</b>, <b>play pool</b><br />
                     - <b>stand up</b>, <b>stop</b>
                   </div>
